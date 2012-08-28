@@ -381,6 +381,9 @@ public class PhotoIntentActivity extends Activity {
 			if (resultCode == RESULT_OK) {
 				handleBigCameraPhoto();
 			}
+			if (resultCode == RESULT_CANCELED) {
+				new File(mCurrentPhotoPath).delete();
+			}
 			break;
 		} // ACTION_TAKE_PHOTO_B
 
