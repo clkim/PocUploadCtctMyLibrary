@@ -26,10 +26,12 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.text.InputFilter.LengthFilter;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.Toast;
 import android.widget.VideoView;
 
 import com.ctctlabs.ctctwsjavalib.CTCTConnection;
@@ -71,19 +73,29 @@ public class PhotoIntentActivity extends Activity {
 
 	private AlbumStorageDirFactory mAlbumStorageDirFactory = null;
 	private String timeStamp;
+	private Boolean hasCameraCanceled = false;
+	private Boolean hasStartedActivityTakePictureIntent = false;
 	
 	
 	private class UploadImageAsyncTask extends AsyncTask<String, Void, String> {
 
 		@Override
 		protected String doInBackground(String... paths) {
+			String picturePathSdCard = paths[0];
+			
+			/* Get the size of the image */
+			bmOptions.inJustDecodeBounds = true;
+			BitmapFactory.decodeFile(picturePathSdCard, bmOptions);
+			if( bmOptions.outWidth==-1 || bmOptions.outHeight==-1 ) return null;
+			
 			// set BitmapFactory.Options object to be used by decodeFile()
 			int scaleFactorUpload = calculateInSampleSize(bmOptions, 200, 150); // dim of stored uploaded picture is ~800w ~600h
 			Log.d(LOG_TAG, "** picture outWidth, outHeight: "+bmOptions.outWidth+", "+bmOptions.outHeight);
 			Log.d(LOG_TAG, "** inSampleSize is "+scaleFactorUpload);
-			bmOptions.inSampleSize = scaleFactorUpload;
 			bmOptions.inJustDecodeBounds = false;
-			String picturePathSdCard = paths[0];
+			bmOptions.inSampleSize = scaleFactorUpload;
+			bmOptions.inPurgeable = true;
+			
 			File file = new File(picturePathSdCard);
 			Bitmap bm = BitmapFactory.decodeFile(file.getAbsolutePath(), bmOptions);
 			
@@ -92,6 +104,9 @@ public class PhotoIntentActivity extends Activity {
 				// rotate picture if portrait
 				ExifInterface exif = new ExifInterface(picturePathSdCard);
 				Log.d(LOG_TAG, "** exif orientation tag value is "+exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0));
+				Log.d(LOG_TAG, "** exif image width, length, hasThumbnail: "+exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, -1) +
+						", "+exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, -1) +
+						", "+exif.hasThumbnail());
 				if (ExifInterface.ORIENTATION_ROTATE_90 == exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0)) {
 					Matrix matrix = new Matrix();
 					matrix.preRotate(90f);
@@ -132,7 +147,11 @@ public class PhotoIntentActivity extends Activity {
 		@Override
 		protected void onPostExecute(String result) {
 			if (result != null) {
+				Toast.makeText(getApplicationContext(), "Uploaded to your CTCT MyLibrary Plus", Toast.LENGTH_LONG).show();
 				Log.d(LOG_TAG, "** Image Url is "+result);
+			} else {
+				Log.d(LOG_TAG, "**Error in JPEG picture, not uploaded");
+				Toast.makeText(getApplicationContext(), "Sorry! Failed to upload to your CTCT MyLibrary Plus", Toast.LENGTH_LONG).show();
 			}
 			super.onPostExecute(result);
 		}
@@ -238,7 +257,31 @@ public class PhotoIntentActivity extends Activity {
 		mImageView.setVisibility(View.VISIBLE);
 		mVideoView.setVisibility(View.INVISIBLE);
 	}
-
+	
+	private void setPicFromExifThumbnail() {
+		try {
+			ExifInterface exif = new ExifInterface(mCurrentPhotoPath);
+			if (exif.hasThumbnail()) {
+				byte[] data = exif.getThumbnail();
+				mImageBitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
+				// rotate if portrait
+				if (ExifInterface.ORIENTATION_ROTATE_90 == exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0)) {
+					Matrix matrix = new Matrix();
+					matrix.preRotate(90f);
+					mImageBitmap = Bitmap.createBitmap(mImageBitmap, 0, 0, mImageBitmap.getWidth(), mImageBitmap.getHeight(), matrix, true);
+				}
+			}
+			/* Associate the Bitmap to the ImageView */
+			mImageView.setImageBitmap(mImageBitmap);
+			mVideoUri = null;
+			mImageView.setVisibility(View.VISIBLE);
+			mVideoView.setVisibility(View.INVISIBLE);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+	}
+	
 	private void galleryAddPic() {
 		    Intent mediaScanIntent = new Intent("android.intent.action.MEDIA_SCANNER_SCAN_FILE");
 			File f = new File(mCurrentPhotoPath);
@@ -253,8 +296,8 @@ public class PhotoIntentActivity extends Activity {
 
 		switch(actionCode) {
 		case ACTION_TAKE_PHOTO_B:
+			hasCameraCanceled = false;
 			File f = null;
-			
 			try {
 				f = createImageFile();
 				//f = setUpPhotoFile();
@@ -273,6 +316,7 @@ public class PhotoIntentActivity extends Activity {
 		} // switch
 
 		startActivityForResult(takePictureIntent, actionCode);
+		hasStartedActivityTakePictureIntent = true;
 	}
 
 	private void dispatchTakeVideoIntent() {
@@ -292,7 +336,8 @@ public class PhotoIntentActivity extends Activity {
 	private void handleBigCameraPhoto() {
 		Log.d(LOG_TAG, "** in handleBigPhoto, mCurrentPhotoPath is "+mCurrentPhotoPath);
 		if (mCurrentPhotoPath != null) {
-			setPic();
+			setPicFromExifThumbnail();
+			//setPic();
 			galleryAddPic();
 			
 			// upload to save photo in CTCT Library
@@ -372,16 +417,28 @@ public class PhotoIntentActivity extends Activity {
 		} else {
 			mAlbumStorageDirFactory = new BaseAlbumDirFactory();
 		}
+		
+		Log.d(LOG_TAG, "** exiting onCreate(), hasCameraCanceled "+hasCameraCanceled);
 	}
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		if (!hasCameraCanceled && !hasStartedActivityTakePictureIntent) dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
+		Log.d(LOG_TAG, "** exiting onResume(), hasCameraCanceled "+hasCameraCanceled);
+	}
+
 
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 		switch (requestCode) {
 		case ACTION_TAKE_PHOTO_B: {
+			hasStartedActivityTakePictureIntent = false;
 			if (resultCode == RESULT_OK) {
 				handleBigCameraPhoto();
 			}
 			if (resultCode == RESULT_CANCELED) {
+				hasCameraCanceled = true;
 				new File(mCurrentPhotoPath).delete();
 			}
 			break;
@@ -412,6 +469,8 @@ public class PhotoIntentActivity extends Activity {
 		outState.putBoolean(VIDEOVIEW_VISIBILITY_STORAGE_KEY, (mVideoUri != null) );
 		outState.putString(CURRENT_PHOTO_PATH_KEY, mCurrentPhotoPath);
 		outState.putString(TIMESTAMP_KEY, timeStamp);
+		outState.putBoolean("hascameracanceled", hasCameraCanceled);
+		outState.putBoolean("hasStartedActivityTakePictureIntent", hasStartedActivityTakePictureIntent);
 		super.onSaveInstanceState(outState);
 	}
 
@@ -432,6 +491,9 @@ public class PhotoIntentActivity extends Activity {
 		);
 		mCurrentPhotoPath = savedInstanceState.getString(CURRENT_PHOTO_PATH_KEY);
 		timeStamp = savedInstanceState.getString(TIMESTAMP_KEY);
+		hasCameraCanceled = savedInstanceState.getBoolean("hascameracanceled");
+		hasStartedActivityTakePictureIntent = savedInstanceState.getBoolean("hasStartedActivityTakePictureIntent");
+		Log.d(LOG_TAG, "** exiting onRestoreInstanceState()");
 	}
 
 	/**
