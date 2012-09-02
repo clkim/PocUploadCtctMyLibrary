@@ -10,7 +10,6 @@ import java.util.List;
 
 import org.apache.http.client.ClientProtocolException;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -26,19 +25,21 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
-import android.text.InputFilter.LengthFilter;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Toast;
-import android.widget.VideoView;
 
+import com.actionbarsherlock.app.SherlockActivity;
+import com.actionbarsherlock.view.Menu;
+import com.actionbarsherlock.view.MenuInflater;
+import com.actionbarsherlock.view.MenuItem;
 import com.ctctlabs.ctctwsjavalib.CTCTConnection;
 import com.ctctlabs.ctctwsjavalib.Image;
 
 
-public class PhotoIntentActivity extends Activity {
+public class PhotoIntentActivity extends SherlockActivity {
 
 	private static final int ACTION_TAKE_PHOTO_B = 1;
 	private static final int ACTION_TAKE_PHOTO_S = 2;
@@ -51,7 +52,7 @@ public class PhotoIntentActivity extends Activity {
 
 	private static final String VIDEO_STORAGE_KEY = "viewvideo";
 	private static final String VIDEOVIEW_VISIBILITY_STORAGE_KEY = "videoviewvisibility";
-	private VideoView mVideoView;
+//	private VideoView mVideoView;
 	private Uri mVideoUri;
 	
 	private final BitmapFactory.Options bmOptions = new BitmapFactory.Options();
@@ -255,7 +256,7 @@ public class PhotoIntentActivity extends Activity {
 		mImageView.setImageBitmap(mImageBitmap);
 		mVideoUri = null;
 		mImageView.setVisibility(View.VISIBLE);
-		mVideoView.setVisibility(View.INVISIBLE);
+//		mVideoView.setVisibility(View.INVISIBLE);
 	}
 	
 	private void setPicFromExifThumbnail() {
@@ -275,7 +276,7 @@ public class PhotoIntentActivity extends Activity {
 			mImageView.setImageBitmap(mImageBitmap);
 			mVideoUri = null;
 			mImageView.setVisibility(View.VISIBLE);
-			mVideoView.setVisibility(View.INVISIBLE);
+//			mVideoView.setVisibility(View.INVISIBLE);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -330,7 +331,7 @@ public class PhotoIntentActivity extends Activity {
 		mImageView.setImageBitmap(mImageBitmap);
 		mVideoUri = null;
 		mImageView.setVisibility(View.VISIBLE);
-		mVideoView.setVisibility(View.INVISIBLE);
+//		mVideoView.setVisibility(View.INVISIBLE);
 	}
 
 	private void handleBigCameraPhoto() {
@@ -350,9 +351,9 @@ public class PhotoIntentActivity extends Activity {
 
 	private void handleCameraVideo(Intent intent) {
 		mVideoUri = intent.getData();
-		mVideoView.setVideoURI(mVideoUri);
+//		mVideoView.setVideoURI(mVideoUri);
 		mImageBitmap = null;
-		mVideoView.setVisibility(View.VISIBLE);
+//		mVideoView.setVisibility(View.VISIBLE);
 		mImageView.setVisibility(View.INVISIBLE);
 	}
 
@@ -387,10 +388,10 @@ public class PhotoIntentActivity extends Activity {
 		setContentView(R.layout.main);
 
 		mImageView = (ImageView) findViewById(R.id.imageView1);
-		mVideoView = (VideoView) findViewById(R.id.videoView1);
+//		mVideoView = (VideoView) findViewById(R.id.videoView1);
 		mImageBitmap = null;
 		mVideoUri = null;
-
+		/*
 		Button picBtn = (Button) findViewById(R.id.btnIntend);
 		setBtnListenerOrDisable( 
 				picBtn, 
@@ -411,6 +412,7 @@ public class PhotoIntentActivity extends Activity {
 				mTakeVidOnClickListener,
 				MediaStore.ACTION_VIDEO_CAPTURE
 		);
+		*/
 		
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.FROYO) {
 			mAlbumStorageDirFactory = new FroyoAlbumDirFactory();
@@ -420,15 +422,42 @@ public class PhotoIntentActivity extends Activity {
 		
 		Log.d(LOG_TAG, "** exiting onCreate(), hasCameraCanceled "+hasCameraCanceled);
 	}
-
+	
+	
 	@Override
 	protected void onResume() {
 		super.onResume();
 		if (!hasCameraCanceled && !hasStartedActivityTakePictureIntent) dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
 		Log.d(LOG_TAG, "** exiting onResume(), hasCameraCanceled "+hasCameraCanceled);
 	}
+	
+	
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		MenuInflater inflater = getSupportMenuInflater(); // using ActionBarSherlock
+		inflater.inflate(R.menu.activity, menu);
+		// check if can handle intent
+		if (!isIntentAvailable(this, MediaStore.ACTION_IMAGE_CAPTURE)) {
+			MenuItem camera = menu.findItem(R.id.menu_camera);
+			camera.setEnabled(false).setTitle("Snap! No app found to handle "+getText(R.id.menu_camera)); //TODO
+		}
+		return true;
+	}
+	
+	
+	@Override
+	public boolean onOptionsItemSelected(MenuItem item) {
+		switch (item.getItemId()) {
+		case R.id.menu_camera:
+			dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
+			return true;
 
-
+		default:
+			return super.onOptionsItemSelected(item);
+		}
+	}
+	
+	
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 		switch (requestCode) {
@@ -469,7 +498,7 @@ public class PhotoIntentActivity extends Activity {
 		outState.putBoolean(VIDEOVIEW_VISIBILITY_STORAGE_KEY, (mVideoUri != null) );
 		outState.putString(CURRENT_PHOTO_PATH_KEY, mCurrentPhotoPath);
 		outState.putString(TIMESTAMP_KEY, timeStamp);
-		outState.putBoolean("hascameracanceled", hasCameraCanceled);
+		outState.putBoolean("hascameracanceled", hasCameraCanceled); //TODO
 		outState.putBoolean("hasStartedActivityTakePictureIntent", hasStartedActivityTakePictureIntent);
 		super.onSaveInstanceState(outState);
 	}
@@ -484,14 +513,14 @@ public class PhotoIntentActivity extends Activity {
 				savedInstanceState.getBoolean(IMAGEVIEW_VISIBILITY_STORAGE_KEY) ? 
 						ImageView.VISIBLE : ImageView.INVISIBLE
 		);
-		mVideoView.setVideoURI(mVideoUri);
-		mVideoView.setVisibility(
-				savedInstanceState.getBoolean(VIDEOVIEW_VISIBILITY_STORAGE_KEY) ? 
-						ImageView.VISIBLE : ImageView.INVISIBLE
-		);
+//		mVideoView.setVideoURI(mVideoUri);
+//		mVideoView.setVisibility(
+//				savedInstanceState.getBoolean(VIDEOVIEW_VISIBILITY_STORAGE_KEY) ? 
+//						ImageView.VISIBLE : ImageView.INVISIBLE
+//		);
 		mCurrentPhotoPath = savedInstanceState.getString(CURRENT_PHOTO_PATH_KEY);
 		timeStamp = savedInstanceState.getString(TIMESTAMP_KEY);
-		hasCameraCanceled = savedInstanceState.getBoolean("hascameracanceled");
+		hasCameraCanceled = savedInstanceState.getBoolean("hascameracanceled"); //TODO
 		hasStartedActivityTakePictureIntent = savedInstanceState.getBoolean("hasStartedActivityTakePictureIntent");
 		Log.d(LOG_TAG, "** exiting onRestoreInstanceState()");
 	}

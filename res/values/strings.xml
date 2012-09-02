@@ -7,4 +7,6 @@
     <string name="btnIntendV">Take Video Movie</string>
     <string name="cannot">Cannot</string>
     <string name="album_name">CameraSample</string>
+    <string name="title_camera">Camera</string>
+    <string name="contentdescription_imageview">Picture taken by camera</string>
 </resources>
