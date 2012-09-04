@@ -9,9 +9,11 @@ import java.util.HashMap;
 import java.util.List;
 
 import org.apache.http.client.ClientProtocolException;
+import org.json.JSONException;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences.Editor;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
@@ -27,6 +29,8 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Toast;
@@ -49,6 +53,8 @@ public class PhotoIntentActivity extends SherlockActivity {
 	private static final String IMAGEVIEW_VISIBILITY_STORAGE_KEY = "imageviewvisibility";
 	private ImageView mImageView;
 	private Bitmap mImageBitmap;
+	
+	private WebView webview;
 
 	private static final String VIDEO_STORAGE_KEY = "viewvideo";
 	private static final String VIDEOVIEW_VISIBILITY_STORAGE_KEY = "videoviewvisibility";
@@ -63,18 +69,22 @@ public class PhotoIntentActivity extends SherlockActivity {
     
 	private CTCTConnection conn;    
     private HashMap<String, Object> attributes;
+    
+    private static final String REDIRECT_URI	= "https://uploadctctdomain";
+    private static final String AUTHORIZE_PATH	= "https://oauth2.constantcontact.com/oauth2/oauth/siteowner/authorize"; 
+    private static final String CLIENT_ID		= "8fc5424e-d919-4739-823f-f78a465b61d1";
+    private String accessToken;
+    private String userName;
 
 	private static final String JPEG_FILE_PREFIX = "IMG_";
 	private static final String JPEG_FILE_SUFFIX = ".jpg";
 	
-	private static final String API_KEY = "bcf8cdb2-77e5-424e-bf3b-72b764f1cadb";
-	private static final String USERNAME = "chonglimkim";
-	private static final String PASSWORD = "cL)02481";
 	private static final String LOG_TAG = PhotoIntentActivity.class.getSimpleName();
 
 	private AlbumStorageDirFactory mAlbumStorageDirFactory = null;
 	private String timeStamp;
 	private Boolean hasCameraCanceled = false;
+	private Boolean hasCameraOKed = false;
 	private Boolean hasStartedActivityTakePictureIntent = false;
 	
 	
@@ -119,9 +129,12 @@ public class PhotoIntentActivity extends SherlockActivity {
 				byte[] data = bos.toByteArray();
 
 				conn = new CTCTConnection();
-				boolean isAuthenticated = conn.authenticate(API_KEY, USERNAME, PASSWORD);
-				if (!isAuthenticated) return null;
-				Log.d(LOG_TAG, "** authenticated with "+USERNAME);
+				userName = conn.authenticateOAuth2(accessToken);
+				if (userName == null) return null;
+				Log.d(LOG_TAG, "** authenticated with "+userName);
+				//boolean isAuthenticated = conn.authenticate(API_KEY, USERNAME, PASSWORD);
+				//if (!isAuthenticated) return null;
+				//Log.d(LOG_TAG, "** authenticated with "+USERNAME);
 
 				attributes = new HashMap<String, Object>();
 				String folderId = "2";
@@ -135,6 +148,9 @@ public class PhotoIntentActivity extends SherlockActivity {
 				e.printStackTrace();
 				return null;
 			} catch (IOException e) {
+				e.printStackTrace();
+				return null;
+			} catch (JSONException e) {
 				e.printStackTrace();
 				return null;
 			} finally {
@@ -297,6 +313,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 
 		switch(actionCode) {
 		case ACTION_TAKE_PHOTO_B:
+			hasCameraOKed = false;
 			hasCameraCanceled = false;
 			File f = null;
 			try {
@@ -341,10 +358,16 @@ public class PhotoIntentActivity extends SherlockActivity {
 			//setPic();
 			galleryAddPic();
 			
-			// upload to save photo in CTCT Library
-			new UploadImageAsyncTask().execute(mCurrentPhotoPath);
-			
-			mCurrentPhotoPath = null;
+			// check if logged in to to upload
+			if (accessToken == null) {
+				Toast.makeText(this, "Please login first", Toast.LENGTH_LONG).show();
+	        	// login done in onResume()
+				//  after login, upload is done in webview.setWebViewClient code
+			} else {
+				// upload to save photo in CTCT Library
+				new UploadImageAsyncTask().execute(mCurrentPhotoPath);
+				mCurrentPhotoPath = null;
+			}
 		}
 
 	}
@@ -386,11 +409,57 @@ public class PhotoIntentActivity extends SherlockActivity {
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.main);
-
+		
 		mImageView = (ImageView) findViewById(R.id.imageView1);
+		webview = (WebView) findViewById(R.id.webview);
 //		mVideoView = (VideoView) findViewById(R.id.videoView1);
 		mImageBitmap = null;
-		mVideoUri = null;
+		
+		// check whether access token already saved
+		final String keyAccessTokey = getString(R.string.key_shpref_access_token);
+        accessToken = getPreferences(Context.MODE_PRIVATE).getString(keyAccessTokey, null);
+        if (accessToken == null) {
+            // set up webview for OAuth2 login
+            webview.setWebViewClient(new WebViewClient() {
+            	@Override
+            	public boolean shouldOverrideUrlLoading(WebView view, String url) {
+            		//Log.d(TAG, "** in shouldOverrideUrlLoading(), url is: " + url);
+            		if ( url.startsWith(REDIRECT_URI) ) {
+            			
+            			// extract OAuth2 access_token appended in url
+            			if ( url.indexOf("access_token=") != -1 ) {
+            				accessToken = mExtractToken(url);
+
+            				// store in default SharedPreferences
+            				Editor e = getPreferences(Context.MODE_PRIVATE).edit();
+            				e.putString(keyAccessTokey, accessToken);
+            				e.commit();
+            				
+            				// login successful
+            				Toast.makeText(getApplicationContext(), "Login successful, uploading picture", Toast.LENGTH_LONG).show();
+            				mImageView.setVisibility(View.VISIBLE);
+            	            webview.setVisibility(View.GONE);
+            				
+            	            // continue with what would have been done in handleBigCameraPhoto() and onResume()
+            	            //  upload to save photo in CTCT Library
+            				new UploadImageAsyncTask().execute(mCurrentPhotoPath);
+            				mCurrentPhotoPath = null;
+            				//  return to Camera app
+            				dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
+            			}
+
+            			// don't go to redirectUri
+            			return true;
+            		}
+
+            		// load the webpage from url (login and grant access)
+            		Toast.makeText(getApplicationContext(), "Loading page...", Toast.LENGTH_SHORT).show();
+            		return super.shouldOverrideUrlLoading(view, url); // return false; 
+            	}
+            });
+        }
+		
+//		mVideoUri = null;
 		/*
 		Button picBtn = (Button) findViewById(R.id.btnIntend);
 		setBtnListenerOrDisable( 
@@ -420,16 +489,42 @@ public class PhotoIntentActivity extends SherlockActivity {
 			mAlbumStorageDirFactory = new BaseAlbumDirFactory();
 		}
 		
+		Log.d(LOG_TAG, "** savedInstanceState value in onCreate(), hasCameraCanceled "+
+				((savedInstanceState!=null) ? String.valueOf(savedInstanceState.getBoolean("hascameracanceled")) : null)
+		);
 		Log.d(LOG_TAG, "** exiting onCreate(), hasCameraCanceled "+hasCameraCanceled);
+	}
+        
+	private String mExtractToken(String url) {
+		// url has format https://localhost/#access_token=<tokenstring>&token_type=Bearer&expires_in=315359999
+		String[] sArray = url.split("access_token=");
+		return (sArray[1].split("&token_type=Bearer"))[0];
 	}
 	
 	
 	@Override
 	protected void onResume() {
 		super.onResume();
-		if (!hasCameraCanceled && !hasStartedActivityTakePictureIntent) dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
+		if (accessToken==null && hasCameraOKed) {
+			// need to get access token with OAuth2.0
+            mImageView.setVisibility(View.GONE);
+            webview.setVisibility(View.VISIBLE);
+            // do OAuth2 login
+            String authorizationUri = mReturnAuthorizationRequestUri();
+            webview.loadUrl(authorizationUri);
+		} else if (!hasCameraCanceled && !hasStartedActivityTakePictureIntent)
+				dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
 		Log.d(LOG_TAG, "** exiting onResume(), hasCameraCanceled "+hasCameraCanceled);
 	}
+	
+	private String mReturnAuthorizationRequestUri() {
+    	StringBuilder sb = new StringBuilder();
+    	sb.append(AUTHORIZE_PATH);
+    	sb.append("?response_type=token");
+    	sb.append("&client_id="+CLIENT_ID);
+    	sb.append("&redirect_uri="+REDIRECT_URI);
+    	return sb.toString();
+    }
 	
 	
 	@Override
@@ -464,6 +559,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 		case ACTION_TAKE_PHOTO_B: {
 			hasStartedActivityTakePictureIntent = false;
 			if (resultCode == RESULT_OK) {
+				hasCameraOKed = true;
 				handleBigCameraPhoto();
 			}
 			if (resultCode == RESULT_CANCELED) {
@@ -500,6 +596,8 @@ public class PhotoIntentActivity extends SherlockActivity {
 		outState.putString(TIMESTAMP_KEY, timeStamp);
 		outState.putBoolean("hascameracanceled", hasCameraCanceled); //TODO
 		outState.putBoolean("hasStartedActivityTakePictureIntent", hasStartedActivityTakePictureIntent);
+		outState.putBoolean("hascameraoked", hasCameraOKed);
+		outState.putString("accesstoken", accessToken);
 		super.onSaveInstanceState(outState);
 	}
 
@@ -522,7 +620,9 @@ public class PhotoIntentActivity extends SherlockActivity {
 		timeStamp = savedInstanceState.getString(TIMESTAMP_KEY);
 		hasCameraCanceled = savedInstanceState.getBoolean("hascameracanceled"); //TODO
 		hasStartedActivityTakePictureIntent = savedInstanceState.getBoolean("hasStartedActivityTakePictureIntent");
-		Log.d(LOG_TAG, "** exiting onRestoreInstanceState()");
+		hasCameraOKed = savedInstanceState.getBoolean("hascameraoked");
+		accessToken = savedInstanceState.getString("accesstoken");
+		Log.d(LOG_TAG, "** exiting onRestoreInstanceState(), savedInstanceState hasCameraCanceled "+hasCameraCanceled);
 	}
 
 	/**

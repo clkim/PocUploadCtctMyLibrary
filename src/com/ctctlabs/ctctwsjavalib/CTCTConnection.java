@@ -171,6 +171,7 @@ public class CTCTConnection extends DefaultHandler {
 		reqEntity.addPart(fbp1);
 		reqEntity.addPart(fbp2);
 		httppost.setEntity(reqEntity);
+		if (accessToken != null) httppost.setHeader("Authorization", "Bearer "+accessToken); // for OAuth2.0
 		HttpResponse response = httpclient.execute(httppost);
 		
 		int status = response.getStatusLine().getStatusCode();
@@ -194,6 +195,7 @@ public class CTCTConnection extends DefaultHandler {
 		httppost.addHeader("Content-Type", "application/atom+xml");
 		ByteArrayEntity entity = new ByteArrayEntity(content.getBytes());
 		httppost.setEntity(entity);
+		if (accessToken != null) httppost.setHeader("Authorization", "Bearer "+accessToken); // for OAuth2.0
 		HttpResponse response = httpclient.execute(httppost);
 		
 		int status = response.getStatusLine().getStatusCode();
