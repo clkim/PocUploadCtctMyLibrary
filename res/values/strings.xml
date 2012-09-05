@@ -10,4 +10,9 @@
     <string name="title_camera">Camera</string>
     <string name="contentdescription_imageview">Picture taken by camera</string>
     <string name="key_shpref_access_token">CTCTAccessToken</string>
+    <string name="pref_key_folderid">folderId</string>
+    <string name="pref_title_foldid">My Library Folder ID</string>
+    <string name="pref_summary_folderid">Specify the folder id in your My Library Plus to upload pictures</string>
+    <string name="pref_defaultvalue_folderid">2</string>
+    <string name="title_settings">Settings</string>
 </resources>

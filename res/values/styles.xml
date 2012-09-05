@@ -2,5 +2,7 @@
 
     <style name="AppTheme" parent="Theme.Sherlock" />
     <!-- <style name="AppTheme" parent="android:Theme.Light" /> -->
+    
+    <style name="SettingsTheme" parent="Theme.Sherlock.Dialog" />
 
 </resources>

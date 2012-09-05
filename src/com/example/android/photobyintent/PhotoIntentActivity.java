@@ -13,6 +13,7 @@ import org.json.JSONException;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -26,6 +27,7 @@ import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.preference.PreferenceManager;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
@@ -137,7 +139,8 @@ public class PhotoIntentActivity extends SherlockActivity {
 				//Log.d(LOG_TAG, "** authenticated with "+USERNAME);
 
 				attributes = new HashMap<String, Object>();
-				String folderId = "2";
+				SharedPreferences shPref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+				String folderId = shPref.getString(getString(R.string.pref_key_folderid), "2"); //default is "2";
 				String fileName = "clktest"+timeStamp+".jpg";
 				String description = "InvoiceNow Image";
 				Image imageModelObj = conn.createImage(attributes, folderId, fileName, data, description);
@@ -489,6 +492,8 @@ public class PhotoIntentActivity extends SherlockActivity {
 			mAlbumStorageDirFactory = new BaseAlbumDirFactory();
 		}
 		
+		PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
+		
 		Log.d(LOG_TAG, "** savedInstanceState value in onCreate(), hasCameraCanceled "+
 				((savedInstanceState!=null) ? String.valueOf(savedInstanceState.getBoolean("hascameracanceled")) : null)
 		);
@@ -546,6 +551,8 @@ public class PhotoIntentActivity extends SherlockActivity {
 		case R.id.menu_camera:
 			dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
 			return true;
+		case R.id.menu_settings:
+			startActivity(new Intent(this, SettingsActivity.class));
 
 		default:
 			return super.onOptionsItemSelected(item);
