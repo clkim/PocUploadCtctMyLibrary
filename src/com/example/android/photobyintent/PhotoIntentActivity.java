@@ -13,6 +13,7 @@ import org.json.JSONException;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
 import android.content.pm.PackageManager;
@@ -131,7 +132,8 @@ public class PhotoIntentActivity extends SherlockActivity {
 				byte[] data = bos.toByteArray();
 
 				conn = new CTCTConnection();
-				userName = conn.authenticateOAuth2(accessToken);
+				//if (userName == null)
+						userName = conn.authenticateOAuth2(accessToken);
 				if (userName == null) return null;
 				Log.d(LOG_TAG, "** authenticated with "+userName);
 				//boolean isAuthenticated = conn.authenticate(API_KEY, USERNAME, PASSWORD);
@@ -141,8 +143,8 @@ public class PhotoIntentActivity extends SherlockActivity {
 				attributes = new HashMap<String, Object>();
 				SharedPreferences shPref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
 				String folderId = shPref.getString(getString(R.string.pref_key_folderid), "2"); //default is "2";
-				String fileName = "clktest"+timeStamp+".jpg";
-				String description = "InvoiceNow Image";
+				String fileName = "UploadCTCT"+timeStamp+".jpg";
+				String description = "UploadCTCT Image";
 				Image imageModelObj = conn.createImage(attributes, folderId, fileName, data, description);
 				imageModelObj.commit();
 				imageUrl = (String)imageModelObj.getAttribute("ImageURL");
@@ -167,11 +169,11 @@ public class PhotoIntentActivity extends SherlockActivity {
 		@Override
 		protected void onPostExecute(String result) {
 			if (result != null) {
-				Toast.makeText(getApplicationContext(), "Uploaded to your CTCT MyLibrary Plus", Toast.LENGTH_LONG).show();
+				Toast.makeText(getApplicationContext(), "Uploaded to CTCT MyLibrary Plus", Toast.LENGTH_LONG).show();
 				Log.d(LOG_TAG, "** Image Url is "+result);
 			} else {
-				Log.d(LOG_TAG, "**Error in JPEG picture, not uploaded");
-				Toast.makeText(getApplicationContext(), "Sorry! Failed to upload to your CTCT MyLibrary Plus", Toast.LENGTH_LONG).show();
+				Log.d(LOG_TAG, "**Error -- picture not uploaded");
+				Toast.makeText(getApplicationContext(), "Snap! Please try again", Toast.LENGTH_LONG).show();
 			}
 			super.onPostExecute(result);
 		}
@@ -539,7 +541,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 		// check if can handle intent
 		if (!isIntentAvailable(this, MediaStore.ACTION_IMAGE_CAPTURE)) {
 			MenuItem camera = menu.findItem(R.id.menu_camera);
-			camera.setEnabled(false).setTitle("Snap! No app found to handle "+getText(R.id.menu_camera)); //TODO
+			camera.setEnabled(false).setTitle("Snap! No "+getText(R.id.menu_camera)); //TODO
 		}
 		return true;
 	}
@@ -553,7 +555,12 @@ public class PhotoIntentActivity extends SherlockActivity {
 			return true;
 		case R.id.menu_settings:
 			startActivity(new Intent(this, SettingsActivity.class));
-
+			return true;
+		case R.id.menu_gallery:
+			Intent intent = new Intent(Intent.ACTION_VIEW,
+					Uri.parse("content://media/internal/images/media"));
+			startActivity(intent);
+			return true;
 		default:
 			return super.onOptionsItemSelected(item);
 		}
@@ -605,6 +612,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 		outState.putBoolean("hasStartedActivityTakePictureIntent", hasStartedActivityTakePictureIntent);
 		outState.putBoolean("hascameraoked", hasCameraOKed);
 		outState.putString("accesstoken", accessToken);
+		outState.putString("username", userName);
 		super.onSaveInstanceState(outState);
 	}
 
@@ -629,6 +637,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 		hasStartedActivityTakePictureIntent = savedInstanceState.getBoolean("hasStartedActivityTakePictureIntent");
 		hasCameraOKed = savedInstanceState.getBoolean("hascameraoked");
 		accessToken = savedInstanceState.getString("accesstoken");
+		userName = savedInstanceState.getString("username");
 		Log.d(LOG_TAG, "** exiting onRestoreInstanceState(), savedInstanceState hasCameraCanceled "+hasCameraCanceled);
 	}
 
