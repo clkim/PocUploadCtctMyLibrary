@@ -13,7 +13,6 @@ import org.json.JSONException;
 
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
 import android.content.pm.PackageManager;
@@ -34,7 +33,6 @@ import android.util.Log;
 import android.view.View;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Toast;
 
@@ -49,8 +47,6 @@ import com.ctctlabs.ctctwsjavalib.Image;
 public class PhotoIntentActivity extends SherlockActivity {
 
 	private static final int ACTION_TAKE_PHOTO_B = 1;
-	private static final int ACTION_TAKE_PHOTO_S = 2;
-	private static final int ACTION_TAKE_VIDEO = 3;
 
 	private static final String BITMAP_STORAGE_KEY = "viewbitmap";
 	private static final String IMAGEVIEW_VISIBILITY_STORAGE_KEY = "imageviewvisibility";
@@ -61,7 +57,6 @@ public class PhotoIntentActivity extends SherlockActivity {
 
 	private static final String VIDEO_STORAGE_KEY = "viewvideo";
 	private static final String VIDEOVIEW_VISIBILITY_STORAGE_KEY = "videoviewvisibility";
-//	private VideoView mVideoView;
 	private Uri mVideoUri;
 	
 	private final BitmapFactory.Options bmOptions = new BitmapFactory.Options();
@@ -103,7 +98,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 			if( bmOptions.outWidth==-1 || bmOptions.outHeight==-1 ) return null;
 			
 			// set BitmapFactory.Options object to be used by decodeFile()
-			int scaleFactorUpload = calculateInSampleSize(bmOptions, 200, 150); // dim of stored uploaded picture is ~800w ~600h
+			int scaleFactorUpload = calculateInSampleSize(bmOptions, 200, 150); // these dim seems to create files in MLP mostly 50-70 KB, sometimes 100+ KB
 			Log.d(LOG_TAG, "** picture outWidth, outHeight: "+bmOptions.outWidth+", "+bmOptions.outHeight);
 			Log.d(LOG_TAG, "** inSampleSize is "+scaleFactorUpload);
 			bmOptions.inJustDecodeBounds = false;
@@ -172,6 +167,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 				Toast.makeText(getApplicationContext(), "Uploaded to CTCT MyLibrary Plus", Toast.LENGTH_LONG).show();
 				Log.d(LOG_TAG, "** Image Url is "+result);
 			} else {
+				// TODO try detect different errors? e.g. not MLP and exceeded 5 images, can POST succeed but ImageURL attribute not returned/exist?, image too large? 
 				Log.d(LOG_TAG, "**Error -- picture not uploaded");
 				Toast.makeText(getApplicationContext(), "Snap! Please try again", Toast.LENGTH_LONG).show();
 			}
@@ -203,7 +199,6 @@ public class PhotoIntentActivity extends SherlockActivity {
 		return getString(R.string.album_name);
 	}
 
-	
 	private File getAlbumDir() {
 		File storageDir = null;
 
@@ -236,50 +231,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 		return imageF;
 	}
 
-	private File setUpPhotoFile() throws IOException {
-		File f = createImageFile();
-		mCurrentPhotoPath = f.getAbsolutePath();
-		Log.d("PhotoIntentActivity", "photo path is "+mCurrentPhotoPath);
-		return f;
-	}
 
-	private void setPic() {
-
-		/* There isn't enough memory to open up more than a couple camera photos */
-		/* So pre-scale the target bitmap into which the file is decoded */
-
-		/* Get the size of the ImageView */
-		int targetW = mImageView.getWidth();
-		int targetH = mImageView.getHeight();
-
-		/* Get the size of the image */
-		bmOptions.inJustDecodeBounds = true;
-		BitmapFactory.decodeFile(mCurrentPhotoPath, bmOptions);
-		int photoW = bmOptions.outWidth;
-		int photoH = bmOptions.outHeight;
-		
-		/* Figure out which way needs to be reduced less */
-		int scaleFactor = 1;
-		if ((targetW > 0) || (targetH > 0)) {
-			scaleFactor = Math.min(photoW/targetW, photoH/targetH);	
-		}
-		Log.d("PhotoIntentActivity", "scale factor is "+scaleFactor);
-
-		/* Set bitmap options to scale the image decode target */
-		bmOptions.inJustDecodeBounds = false;
-		bmOptions.inSampleSize = scaleFactor;
-		bmOptions.inPurgeable = true;
-
-		/* Decode the JPEG file into a Bitmap */
-		mImageBitmap = BitmapFactory.decodeFile(mCurrentPhotoPath, bmOptions);
-		
-		/* Associate the Bitmap to the ImageView */
-		mImageView.setImageBitmap(mImageBitmap);
-		mVideoUri = null;
-		mImageView.setVisibility(View.VISIBLE);
-//		mVideoView.setVisibility(View.INVISIBLE);
-	}
-	
 	private void setPicFromExifThumbnail() {
 		try {
 			ExifInterface exif = new ExifInterface(mCurrentPhotoPath);
@@ -295,9 +247,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 			}
 			/* Associate the Bitmap to the ImageView */
 			mImageView.setImageBitmap(mImageBitmap);
-			mVideoUri = null;
 			mImageView.setVisibility(View.VISIBLE);
-//			mVideoView.setVisibility(View.INVISIBLE);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -312,6 +262,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 		    this.sendBroadcast(mediaScanIntent);
 	}
 
+	
 	private void dispatchTakePictureIntent(int actionCode) {
 
 		Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
@@ -342,25 +293,11 @@ public class PhotoIntentActivity extends SherlockActivity {
 		hasStartedActivityTakePictureIntent = true;
 	}
 
-	private void dispatchTakeVideoIntent() {
-		Intent takeVideoIntent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
-		startActivityForResult(takeVideoIntent, ACTION_TAKE_VIDEO);
-	}
-
-	private void handleSmallCameraPhoto(Intent intent) {
-		Bundle extras = intent.getExtras();
-		mImageBitmap = (Bitmap) extras.get("data");
-		mImageView.setImageBitmap(mImageBitmap);
-		mVideoUri = null;
-		mImageView.setVisibility(View.VISIBLE);
-//		mVideoView.setVisibility(View.INVISIBLE);
-	}
 
 	private void handleBigCameraPhoto() {
 		Log.d(LOG_TAG, "** in handleBigPhoto, mCurrentPhotoPath is "+mCurrentPhotoPath);
 		if (mCurrentPhotoPath != null) {
 			setPicFromExifThumbnail();
-			//setPic();
 			galleryAddPic();
 			
 			// check if logged in to to upload
@@ -377,37 +314,6 @@ public class PhotoIntentActivity extends SherlockActivity {
 
 	}
 
-	private void handleCameraVideo(Intent intent) {
-		mVideoUri = intent.getData();
-//		mVideoView.setVideoURI(mVideoUri);
-		mImageBitmap = null;
-//		mVideoView.setVisibility(View.VISIBLE);
-		mImageView.setVisibility(View.INVISIBLE);
-	}
-
-	Button.OnClickListener mTakePicOnClickListener = 
-		new Button.OnClickListener() {
-		@Override
-		public void onClick(View v) {
-			dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
-		}
-	};
-
-	Button.OnClickListener mTakePicSOnClickListener = 
-		new Button.OnClickListener() {
-		@Override
-		public void onClick(View v) {
-			dispatchTakePictureIntent(ACTION_TAKE_PHOTO_S);
-		}
-	};
-
-	Button.OnClickListener mTakeVidOnClickListener = 
-		new Button.OnClickListener() {
-		@Override
-		public void onClick(View v) {
-			dispatchTakeVideoIntent();
-		}
-	};
 
 	/** Called when the activity is first created. */
 	@Override
@@ -417,7 +323,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 		
 		mImageView = (ImageView) findViewById(R.id.imageView1);
 		webview = (WebView) findViewById(R.id.webview);
-//		mVideoView = (VideoView) findViewById(R.id.videoView1);
+		
 		mImageBitmap = null;
 		
 		// check whether access token already saved
@@ -428,7 +334,6 @@ public class PhotoIntentActivity extends SherlockActivity {
             webview.setWebViewClient(new WebViewClient() {
             	@Override
             	public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            		//Log.d(TAG, "** in shouldOverrideUrlLoading(), url is: " + url);
             		if ( url.startsWith(REDIRECT_URI) ) {
             			
             			// extract OAuth2 access_token appended in url
@@ -463,30 +368,6 @@ public class PhotoIntentActivity extends SherlockActivity {
             	}
             });
         }
-		
-//		mVideoUri = null;
-		/*
-		Button picBtn = (Button) findViewById(R.id.btnIntend);
-		setBtnListenerOrDisable( 
-				picBtn, 
-				mTakePicOnClickListener,
-				MediaStore.ACTION_IMAGE_CAPTURE
-		);
-
-		Button picSBtn = (Button) findViewById(R.id.btnIntendS);
-		setBtnListenerOrDisable( 
-				picSBtn, 
-				mTakePicSOnClickListener,
-				MediaStore.ACTION_IMAGE_CAPTURE
-		);
-
-		Button vidBtn = (Button) findViewById(R.id.btnIntendV);
-		setBtnListenerOrDisable( 
-				vidBtn, 
-				mTakeVidOnClickListener,
-				MediaStore.ACTION_VIDEO_CAPTURE
-		);
-		*/
 		
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.FROYO) {
 			mAlbumStorageDirFactory = new FroyoAlbumDirFactory();
@@ -541,7 +422,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 		// check if can handle intent
 		if (!isIntentAvailable(this, MediaStore.ACTION_IMAGE_CAPTURE)) {
 			MenuItem camera = menu.findItem(R.id.menu_camera);
-			camera.setEnabled(false).setTitle("Snap! No "+getText(R.id.menu_camera)); //TODO
+			camera.setEnabled(false).setTitle("Snap! No "+getText(R.id.menu_camera));
 		}
 		return true;
 	}
@@ -582,20 +463,6 @@ public class PhotoIntentActivity extends SherlockActivity {
 			}
 			break;
 		} // ACTION_TAKE_PHOTO_B
-
-		case ACTION_TAKE_PHOTO_S: {
-			if (resultCode == RESULT_OK) {
-				handleSmallCameraPhoto(data);
-			}
-			break;
-		} // ACTION_TAKE_PHOTO_S
-
-		case ACTION_TAKE_VIDEO: {
-			if (resultCode == RESULT_OK) {
-				handleCameraVideo(data);
-			}
-			break;
-		} // ACTION_TAKE_VIDEO
 		} // switch
 	}
 
@@ -608,7 +475,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 		outState.putBoolean(VIDEOVIEW_VISIBILITY_STORAGE_KEY, (mVideoUri != null) );
 		outState.putString(CURRENT_PHOTO_PATH_KEY, mCurrentPhotoPath);
 		outState.putString(TIMESTAMP_KEY, timeStamp);
-		outState.putBoolean("hascameracanceled", hasCameraCanceled); //TODO
+		outState.putBoolean("hascameracanceled", hasCameraCanceled); //TODO put in R.string
 		outState.putBoolean("hasStartedActivityTakePictureIntent", hasStartedActivityTakePictureIntent);
 		outState.putBoolean("hascameraoked", hasCameraOKed);
 		outState.putString("accesstoken", accessToken);
@@ -626,14 +493,9 @@ public class PhotoIntentActivity extends SherlockActivity {
 				savedInstanceState.getBoolean(IMAGEVIEW_VISIBILITY_STORAGE_KEY) ? 
 						ImageView.VISIBLE : ImageView.INVISIBLE
 		);
-//		mVideoView.setVideoURI(mVideoUri);
-//		mVideoView.setVisibility(
-//				savedInstanceState.getBoolean(VIDEOVIEW_VISIBILITY_STORAGE_KEY) ? 
-//						ImageView.VISIBLE : ImageView.INVISIBLE
-//		);
 		mCurrentPhotoPath = savedInstanceState.getString(CURRENT_PHOTO_PATH_KEY);
 		timeStamp = savedInstanceState.getString(TIMESTAMP_KEY);
-		hasCameraCanceled = savedInstanceState.getBoolean("hascameracanceled"); //TODO
+		hasCameraCanceled = savedInstanceState.getBoolean("hascameracanceled"); //TODO use R.string
 		hasStartedActivityTakePictureIntent = savedInstanceState.getBoolean("hasStartedActivityTakePictureIntent");
 		hasCameraOKed = savedInstanceState.getBoolean("hascameraoked");
 		accessToken = savedInstanceState.getString("accesstoken");
@@ -661,20 +523,6 @@ public class PhotoIntentActivity extends SherlockActivity {
 			packageManager.queryIntentActivities(intent,
 					PackageManager.MATCH_DEFAULT_ONLY);
 		return list.size() > 0;
-	}
-
-	private void setBtnListenerOrDisable( 
-			Button btn, 
-			Button.OnClickListener onClickListener,
-			String intentName
-	) {
-		if (isIntentAvailable(this, intentName)) {
-			btn.setOnClickListener(onClickListener);        	
-		} else {
-			btn.setText( 
-				getText(R.string.cannot).toString() + " " + btn.getText());
-			btn.setClickable(false);
-		}
 	}
 
 }
