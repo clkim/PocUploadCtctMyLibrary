@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" >
-    <EditTextPreference android:icon="@drawable/edit_query" android:key="@string/pref_key_folderid" android:title="@string/pref_title_foldid" android:defaultValue="@string/pref_defaultvalue_folderid" android:summary="@string/pref_summary_folderid"/>
+    <EditTextPreference android:icon="@drawable/edit_query" android:key="@string/pref_key_folderid" android:title="@string/pref_title_folderid" android:defaultValue="@string/pref_defaultvalue_folderid" android:summary="@string/pref_summary_folderid"/>
+    <EditTextPreference android:icon="@drawable/edit_query" android:key="@string/pref_key_filename" android:summary="@string/pref_summary_filename" android:title="@string/pref_title_filename" android:defaultValue="@string/pref_defaultvalue_filename"/>
+    <EditTextPreference android:key="@string/pref_key_filedesc" android:icon="@drawable/edit_query" android:summary="@string/pref_summary_filedesc" android:title="@string/pref_title_filedesc" android:defaultValue="@string/pref_defaultvalue_filedesc"/>
     
 
 </PreferenceScreen>

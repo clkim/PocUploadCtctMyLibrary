@@ -66,6 +66,8 @@ public class CTCTConnection extends DefaultHandler {
 
 	private String username;
 	private String accessToken; // for OAuth2.0
+	private int responseStatusCode;
+	private String responseStatusReason;
 
 	private DefaultHttpClient httpclient;
 
@@ -106,6 +108,7 @@ public class CTCTConnection extends DefaultHandler {
 		}
 	}
 
+
 	public CTCTConnection() {
 		SchemeRegistry schemeRegistry = new SchemeRegistry();
 		schemeRegistry.register(
@@ -119,6 +122,16 @@ public class CTCTConnection extends DefaultHandler {
 
 		httpclient = new DefaultHttpClient(cm, params);
 	}
+	
+	
+	public int getResponseStatusCode() {
+		return responseStatusCode;
+	}
+
+	public String getResponseStatusReason() {
+		return responseStatusReason;
+	}
+
 
 	/**
 	 * Perform a get request to the web service
@@ -174,11 +187,16 @@ public class CTCTConnection extends DefaultHandler {
 		if (accessToken != null) httppost.setHeader("Authorization", "Bearer "+accessToken); // for OAuth2.0
 		HttpResponse response = httpclient.execute(httppost);
 		
-		int status = response.getStatusLine().getStatusCode();
-
-		// If receive anything but a 201 status, return a null input stream
-		if(status == HttpStatus.SC_CREATED) {
-			return response.getEntity().getContent();
+		if (response != null) {
+			int status = response.getStatusLine().getStatusCode();
+			// If receive anything but a 201 status, return a null input stream
+			if (status == HttpStatus.SC_CREATED) {
+				return response.getEntity().getContent();
+			} else {
+				responseStatusCode = status;
+				responseStatusReason = response.getStatusLine().getReasonPhrase();
+				return null;
+			}
 		} else {
 			return null;
 		}
@@ -289,8 +307,7 @@ public class CTCTConnection extends DefaultHandler {
 		httppost.setEntity(entity);
 		
 		HttpResponse response = httpclient.execute(httppost);
-		
-		if(response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+		if(response!=null && response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
 			InputStream istream = (response.getEntity() != null)
 					? response.getEntity().getContent() : null;
 			if (istream != null) {

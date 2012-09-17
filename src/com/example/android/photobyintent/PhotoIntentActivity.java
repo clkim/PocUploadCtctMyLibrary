@@ -3,11 +3,14 @@ package com.example.android.photobyintent;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 
+import org.apache.http.HttpStatus;
 import org.apache.http.client.ClientProtocolException;
 import org.json.JSONException;
 
@@ -49,15 +52,15 @@ public class PhotoIntentActivity extends SherlockActivity {
 	private static final int ACTION_TAKE_PHOTO_B = 1;
 
 	private static final String BITMAP_STORAGE_KEY = "viewbitmap";
-	private static final String IMAGEVIEW_VISIBILITY_STORAGE_KEY = "imageviewvisibility";
+//	private static final String IMAGEVIEW_VISIBILITY_STORAGE_KEY = "imageviewvisibility";
 	private ImageView mImageView;
 	private Bitmap mImageBitmap;
 	
 	private WebView webview;
 
-	private static final String VIDEO_STORAGE_KEY = "viewvideo";
-	private static final String VIDEOVIEW_VISIBILITY_STORAGE_KEY = "videoviewvisibility";
-	private Uri mVideoUri;
+//	private static final String VIDEO_STORAGE_KEY = "viewvideo";
+//	private static final String VIDEOVIEW_VISIBILITY_STORAGE_KEY = "videoviewvisibility";
+//	private Uri mVideoUri;
 	
 	private final BitmapFactory.Options bmOptions = new BitmapFactory.Options();
 
@@ -77,13 +80,13 @@ public class PhotoIntentActivity extends SherlockActivity {
 	private static final String JPEG_FILE_PREFIX = "IMG_";
 	private static final String JPEG_FILE_SUFFIX = ".jpg";
 	
-	private static final String LOG_TAG = PhotoIntentActivity.class.getSimpleName();
+	private static final String LOG_TAG			 = PhotoIntentActivity.class.getSimpleName();
 
-	private AlbumStorageDirFactory mAlbumStorageDirFactory = null;
+	private AlbumStorageDirFactory mAlbumStorageDirFactory	= null;
 	private String timeStamp;
 	private Boolean hasCameraCanceled = false;
 	private Boolean hasCameraOKed = false;
-	private Boolean hasStartedActivityTakePictureIntent = false;
+	private Boolean hasStartedActivityTakePictureIntent		= false;
 	
 	
 	private class UploadImageAsyncTask extends AsyncTask<String, Void, String> {
@@ -131,19 +134,22 @@ public class PhotoIntentActivity extends SherlockActivity {
 						userName = conn.authenticateOAuth2(accessToken);
 				if (userName == null) return null;
 				Log.d(LOG_TAG, "** authenticated with "+userName);
-				//boolean isAuthenticated = conn.authenticate(API_KEY, USERNAME, PASSWORD);
-				//if (!isAuthenticated) return null;
-				//Log.d(LOG_TAG, "** authenticated with "+USERNAME);
+//				boolean isAuthenticated = conn.authenticate(API_KEY, USERNAME, PASSWORD);
+//				if (!isAuthenticated) return null;
+//				Log.d(LOG_TAG, "** authenticated with "+USERNAME);
 
 				attributes = new HashMap<String, Object>();
 				SharedPreferences shPref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
 				String folderId = shPref.getString(getString(R.string.pref_key_folderid), "2"); //default is "2";
-				String fileName = "UploadCTCT"+timeStamp+".jpg";
-				String description = "UploadCTCT Image";
+				String fileName = shPref.getString(getString(R.string.pref_key_filename), "_Constagram") + timeStamp+".jpg";
+				String description = shPref.getString(getString(R.string.pref_key_filedesc), "Constagram picture");
 				Image imageModelObj = conn.createImage(attributes, folderId, fileName, data, description);
 				imageModelObj.commit();
 				imageUrl = (String)imageModelObj.getAttribute("ImageURL");
-				
+			} catch (SocketException se) {
+				return SocketException.class.getSimpleName();
+			} catch (UnknownHostException uke) {	
+				return UnknownHostException.class.getSimpleName();
 			} catch (ClientProtocolException e) {
 				e.printStackTrace();
 				return null;
@@ -154,7 +160,6 @@ public class PhotoIntentActivity extends SherlockActivity {
 				e.printStackTrace();
 				return null;
 			} finally {
-				conn = null;
 				attributes = null;
 			}
 			
@@ -163,14 +168,28 @@ public class PhotoIntentActivity extends SherlockActivity {
 
 		@Override
 		protected void onPostExecute(String result) {
-			if (result != null) {
-				Toast.makeText(getApplicationContext(), "Uploaded to CTCT MyLibrary Plus", Toast.LENGTH_LONG).show();
-				Log.d(LOG_TAG, "** Image Url is "+result);
-			} else {
-				// TODO try detect different errors? e.g. not MLP and exceeded 5 images, can POST succeed but ImageURL attribute not returned/exist?, image too large? 
+			String message = "";
+			if (result == null) {
 				Log.d(LOG_TAG, "**Error -- picture not uploaded");
-				Toast.makeText(getApplicationContext(), "Snap! Please try again", Toast.LENGTH_LONG).show();
+				// TODO try detect different errors? e.g. not MLP and exceeded 5 images, image too large? 
+				if (conn.getResponseStatusCode() == HttpStatus.SC_BAD_REQUEST) {
+					message = "Snap! Possible bad folder id setting.";
+				} else if (conn.getResponseStatusCode() == 0) {
+					message = "Snap! Please try again. (Unknown reason.)";
+				} else {
+					message = "Snap! Not uploaded. ("+conn.getResponseStatusReason()+".)";
+				}
 			}
+			else if ( result.equals(UnknownHostException.class.getSimpleName())
+					  || result.equals(SocketException.class.getSimpleName()) ) {
+				message = "Please check your Internet connection. ("+result+".)";
+			}
+			else if (result != null) {
+				message = "Uploaded to CTCT MyLibrary Plus";
+				Log.d(LOG_TAG, "** Image Url is "+result);
+			}
+			Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show();
+			conn = null;
 			super.onPostExecute(result);
 		}
 		
@@ -470,9 +489,9 @@ public class PhotoIntentActivity extends SherlockActivity {
 	@Override
 	protected void onSaveInstanceState(Bundle outState) {
 		outState.putParcelable(BITMAP_STORAGE_KEY, mImageBitmap);
-		outState.putParcelable(VIDEO_STORAGE_KEY, mVideoUri);
-		outState.putBoolean(IMAGEVIEW_VISIBILITY_STORAGE_KEY, (mImageBitmap != null) );
-		outState.putBoolean(VIDEOVIEW_VISIBILITY_STORAGE_KEY, (mVideoUri != null) );
+//		outState.putParcelable(VIDEO_STORAGE_KEY, mVideoUri);
+//		outState.putBoolean(IMAGEVIEW_VISIBILITY_STORAGE_KEY, (mImageBitmap != null) );
+//		outState.putBoolean(VIDEOVIEW_VISIBILITY_STORAGE_KEY, (mVideoUri != null) );
 		outState.putString(CURRENT_PHOTO_PATH_KEY, mCurrentPhotoPath);
 		outState.putString(TIMESTAMP_KEY, timeStamp);
 		outState.putBoolean("hascameracanceled", hasCameraCanceled); //TODO put in R.string
@@ -487,12 +506,12 @@ public class PhotoIntentActivity extends SherlockActivity {
 	protected void onRestoreInstanceState(Bundle savedInstanceState) {
 		super.onRestoreInstanceState(savedInstanceState);
 		mImageBitmap = savedInstanceState.getParcelable(BITMAP_STORAGE_KEY);
-		mVideoUri = savedInstanceState.getParcelable(VIDEO_STORAGE_KEY);
+//		mVideoUri = savedInstanceState.getParcelable(VIDEO_STORAGE_KEY);
 		mImageView.setImageBitmap(mImageBitmap);
-		mImageView.setVisibility(
-				savedInstanceState.getBoolean(IMAGEVIEW_VISIBILITY_STORAGE_KEY) ? 
-						ImageView.VISIBLE : ImageView.INVISIBLE
-		);
+//		mImageView.setVisibility(
+//				savedInstanceState.getBoolean(IMAGEVIEW_VISIBILITY_STORAGE_KEY) ? 
+//						ImageView.VISIBLE : ImageView.INVISIBLE
+//		);
 		mCurrentPhotoPath = savedInstanceState.getString(CURRENT_PHOTO_PATH_KEY);
 		timeStamp = savedInstanceState.getString(TIMESTAMP_KEY);
 		hasCameraCanceled = savedInstanceState.getBoolean("hascameracanceled"); //TODO use R.string
