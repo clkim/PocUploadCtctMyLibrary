@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="xhello">Hello World, PhotoIntentActivity!</string>
     <string name="app_name">UploadMLP</string>
-    <string name="xbtnIntend">Take (big) Picture</string>
-    <string name="xbtnIntendS">Take (small) Picture</string>
-    <string name="xbtnIntendV">Take Video Movie</string>
     <string name="cannot">Cannot</string>
     <string name="album_name">UploadMLP</string>
     <string name="title_camera">Camera</string>
