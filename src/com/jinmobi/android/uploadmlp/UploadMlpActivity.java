@@ -1,4 +1,4 @@
-package com.example.android.photobyintent;
+package com.jinmobi.android.uploadmlp;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -47,20 +47,15 @@ import com.ctctlabs.ctctwsjavalib.CTCTConnection;
 import com.ctctlabs.ctctwsjavalib.Image;
 
 
-public class PhotoIntentActivity extends SherlockActivity {
+public class UploadMlpActivity extends SherlockActivity {
 
 	private static final int ACTION_TAKE_PHOTO_B = 1;
 
 	private static final String BITMAP_STORAGE_KEY = "viewbitmap";
-//	private static final String IMAGEVIEW_VISIBILITY_STORAGE_KEY = "imageviewvisibility";
 	private ImageView mImageView;
 	private Bitmap mImageBitmap;
 	
 	private WebView webview;
-
-//	private static final String VIDEO_STORAGE_KEY = "viewvideo";
-//	private static final String VIDEOVIEW_VISIBILITY_STORAGE_KEY = "videoviewvisibility";
-//	private Uri mVideoUri;
 	
 	private final BitmapFactory.Options bmOptions = new BitmapFactory.Options();
 
@@ -80,7 +75,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 	private static final String JPEG_FILE_PREFIX = "IMG_";
 	private static final String JPEG_FILE_SUFFIX = ".jpg";
 	
-	private static final String LOG_TAG			 = PhotoIntentActivity.class.getSimpleName();
+	private static final String LOG_TAG			 = UploadMlpActivity.class.getSimpleName();
 
 	private AlbumStorageDirFactory mAlbumStorageDirFactory	= null;
 	private String timeStamp;
@@ -102,8 +97,8 @@ public class PhotoIntentActivity extends SherlockActivity {
 			
 			// set BitmapFactory.Options object to be used by decodeFile()
 			int scaleFactorUpload = calculateInSampleSize(bmOptions, 200, 150); // these dim seems to create files in MLP mostly 50-70 KB, sometimes 100+ KB
-			Log.d(LOG_TAG, "** picture outWidth, outHeight: "+bmOptions.outWidth+", "+bmOptions.outHeight);
-			Log.d(LOG_TAG, "** inSampleSize is "+scaleFactorUpload);
+//			Log.d(LOG_TAG, "** picture outWidth, outHeight: "+bmOptions.outWidth+", "+bmOptions.outHeight);
+//			Log.d(LOG_TAG, "** inSampleSize is "+scaleFactorUpload);
 			bmOptions.inJustDecodeBounds = false;
 			bmOptions.inSampleSize = scaleFactorUpload;
 			bmOptions.inPurgeable = true;
@@ -115,10 +110,10 @@ public class PhotoIntentActivity extends SherlockActivity {
 			try {
 				// rotate picture if portrait
 				ExifInterface exif = new ExifInterface(picturePathSdCard);
-				Log.d(LOG_TAG, "** exif orientation tag value is "+exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0));
-				Log.d(LOG_TAG, "** exif image width, length, hasThumbnail: "+exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, -1) +
-						", "+exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, -1) +
-						", "+exif.hasThumbnail());
+//				Log.d(LOG_TAG, "** exif orientation tag value is "+exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0));
+//				Log.d(LOG_TAG, "** exif image width, length, hasThumbnail: "+exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, -1) +
+//						", "+exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, -1) +
+//						", "+exif.hasThumbnail());
 				if (ExifInterface.ORIENTATION_ROTATE_90 == exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0)) {
 					Matrix matrix = new Matrix();
 					matrix.preRotate(90f);
@@ -134,15 +129,12 @@ public class PhotoIntentActivity extends SherlockActivity {
 						userName = conn.authenticateOAuth2(accessToken);
 				if (userName == null) return null;
 				Log.d(LOG_TAG, "** authenticated with "+userName);
-//				boolean isAuthenticated = conn.authenticate(API_KEY, USERNAME, PASSWORD);
-//				if (!isAuthenticated) return null;
-//				Log.d(LOG_TAG, "** authenticated with "+USERNAME);
 
 				attributes = new HashMap<String, Object>();
 				SharedPreferences shPref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
 				String folderId = shPref.getString(getString(R.string.pref_key_folderid), "2"); //default is "2";
-				String fileName = shPref.getString(getString(R.string.pref_key_filename), "_Constagram") + timeStamp+".jpg";
-				String description = shPref.getString(getString(R.string.pref_key_filedesc), "Constagram picture");
+				String fileName = shPref.getString(getString(R.string.pref_key_filename), "_UploadMLP") + timeStamp+".jpg";
+				String description = shPref.getString(getString(R.string.pref_key_filedesc), "UploadMLP picture");
 				Image imageModelObj = conn.createImage(attributes, folderId, fileName, data, description);
 				imageModelObj.commit();
 				imageUrl = (String)imageModelObj.getAttribute("ImageURL");
@@ -170,7 +162,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 		protected void onPostExecute(String result) {
 			String message = "";
 			if (result == null) {
-				Log.d(LOG_TAG, "**Error -- picture not uploaded");
+//				Log.d(LOG_TAG, "**Error -- picture not uploaded");
 				// TODO try detect different errors? e.g. not MLP and exceeded 5 images, image too large? 
 				if (conn.getResponseStatusCode() == HttpStatus.SC_BAD_REQUEST) {
 					message = "Snap! Possible bad folder id setting.";
@@ -186,7 +178,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 			}
 			else if (result != null) {
 				message = "Uploaded to CTCT MyLibrary Plus";
-				Log.d(LOG_TAG, "** Image Url is "+result);
+//				Log.d(LOG_TAG, "** Image Url is "+result);
 			}
 			Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show();
 			conn = null;
@@ -228,14 +220,14 @@ public class PhotoIntentActivity extends SherlockActivity {
 			if (storageDir != null) {
 				if (! storageDir.mkdirs()) {
 					if (! storageDir.exists()){
-						Log.d("CameraSample", "failed to create directory");
+//						Log.d("CameraSample", "failed to create directory");
 						return null;
 					}
 				}
 			}
 			
 		} else {
-			Log.v(getString(R.string.app_name), "External storage is not mounted READ/WRITE.");
+//			Log.v(getString(R.string.app_name), "External storage is not mounted READ/WRITE.");
 		}
 		
 		return storageDir;
@@ -293,9 +285,8 @@ public class PhotoIntentActivity extends SherlockActivity {
 			File f = null;
 			try {
 				f = createImageFile();
-				//f = setUpPhotoFile();
 				mCurrentPhotoPath = f.getAbsolutePath();
-				Log.d("PhotoIntentActivity", "photo path is "+mCurrentPhotoPath);
+//				Log.d("UploadMlpActivity", "photo path is "+mCurrentPhotoPath);
 				takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, Uri.fromFile(f));
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -314,7 +305,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 
 
 	private void handleBigCameraPhoto() {
-		Log.d(LOG_TAG, "** in handleBigPhoto, mCurrentPhotoPath is "+mCurrentPhotoPath);
+//		Log.d(LOG_TAG, "** in handleBigPhoto, mCurrentPhotoPath is "+mCurrentPhotoPath);
 		if (mCurrentPhotoPath != null) {
 			setPicFromExifThumbnail();
 			galleryAddPic();
@@ -396,10 +387,10 @@ public class PhotoIntentActivity extends SherlockActivity {
 		
 		PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
 		
-		Log.d(LOG_TAG, "** savedInstanceState value in onCreate(), hasCameraCanceled "+
-				((savedInstanceState!=null) ? String.valueOf(savedInstanceState.getBoolean("hascameracanceled")) : null)
-		);
-		Log.d(LOG_TAG, "** exiting onCreate(), hasCameraCanceled "+hasCameraCanceled);
+//		Log.d(LOG_TAG, "** savedInstanceState value in onCreate(), hasCameraCanceled "+
+//				((savedInstanceState!=null) ? String.valueOf(savedInstanceState.getBoolean("hascameracanceled")) : null)
+//		);
+//		Log.d(LOG_TAG, "** exiting onCreate(), hasCameraCanceled "+hasCameraCanceled);
 	}
         
 	private String mExtractToken(String url) {
@@ -421,7 +412,7 @@ public class PhotoIntentActivity extends SherlockActivity {
             webview.loadUrl(authorizationUri);
 		} else if (!hasCameraCanceled && !hasStartedActivityTakePictureIntent)
 				dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
-		Log.d(LOG_TAG, "** exiting onResume(), hasCameraCanceled "+hasCameraCanceled);
+//		Log.d(LOG_TAG, "** exiting onResume(), hasCameraCanceled "+hasCameraCanceled);
 	}
 	
 	private String mReturnAuthorizationRequestUri() {
@@ -489,9 +480,6 @@ public class PhotoIntentActivity extends SherlockActivity {
 	@Override
 	protected void onSaveInstanceState(Bundle outState) {
 		outState.putParcelable(BITMAP_STORAGE_KEY, mImageBitmap);
-//		outState.putParcelable(VIDEO_STORAGE_KEY, mVideoUri);
-//		outState.putBoolean(IMAGEVIEW_VISIBILITY_STORAGE_KEY, (mImageBitmap != null) );
-//		outState.putBoolean(VIDEOVIEW_VISIBILITY_STORAGE_KEY, (mVideoUri != null) );
 		outState.putString(CURRENT_PHOTO_PATH_KEY, mCurrentPhotoPath);
 		outState.putString(TIMESTAMP_KEY, timeStamp);
 		outState.putBoolean("hascameracanceled", hasCameraCanceled); //TODO put in R.string
@@ -506,12 +494,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 	protected void onRestoreInstanceState(Bundle savedInstanceState) {
 		super.onRestoreInstanceState(savedInstanceState);
 		mImageBitmap = savedInstanceState.getParcelable(BITMAP_STORAGE_KEY);
-//		mVideoUri = savedInstanceState.getParcelable(VIDEO_STORAGE_KEY);
 		mImageView.setImageBitmap(mImageBitmap);
-//		mImageView.setVisibility(
-//				savedInstanceState.getBoolean(IMAGEVIEW_VISIBILITY_STORAGE_KEY) ? 
-//						ImageView.VISIBLE : ImageView.INVISIBLE
-//		);
 		mCurrentPhotoPath = savedInstanceState.getString(CURRENT_PHOTO_PATH_KEY);
 		timeStamp = savedInstanceState.getString(TIMESTAMP_KEY);
 		hasCameraCanceled = savedInstanceState.getBoolean("hascameracanceled"); //TODO use R.string
@@ -519,7 +502,7 @@ public class PhotoIntentActivity extends SherlockActivity {
 		hasCameraOKed = savedInstanceState.getBoolean("hascameraoked");
 		accessToken = savedInstanceState.getString("accesstoken");
 		userName = savedInstanceState.getString("username");
-		Log.d(LOG_TAG, "** exiting onRestoreInstanceState(), savedInstanceState hasCameraCanceled "+hasCameraCanceled);
+//		Log.d(LOG_TAG, "** exiting onRestoreInstanceState(), savedInstanceState hasCameraCanceled "+hasCameraCanceled);
 	}
 
 	/**

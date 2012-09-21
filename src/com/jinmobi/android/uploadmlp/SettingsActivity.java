@@ -1,4 +1,4 @@
-package com.example.android.photobyintent;
+package com.jinmobi.android.uploadmlp;
 
 import android.os.Bundle;
 
