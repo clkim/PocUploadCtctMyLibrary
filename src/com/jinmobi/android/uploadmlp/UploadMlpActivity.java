@@ -20,6 +20,7 @@ import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.CompressFormat;
 import android.graphics.BitmapFactory;
@@ -82,6 +83,7 @@ public class UploadMlpActivity extends SherlockActivity {
 	private Boolean hasCameraCanceled = false;
 	private Boolean hasCameraOKed = false;
 	private Boolean hasStartedActivityTakePictureIntent		= false;
+	private Boolean hasBeenStartedBySendIntent				= false;
 	
 	
 	private class UploadImageAsyncTask extends AsyncTask<String, Void, String> {
@@ -133,6 +135,10 @@ public class UploadMlpActivity extends SherlockActivity {
 				attributes = new HashMap<String, Object>();
 				SharedPreferences shPref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
 				String folderId = shPref.getString(getString(R.string.pref_key_folderid), "2"); //default is "2";
+				if (timeStamp==null) {
+					// not yet set if handling a Send intent so createImageFile() was not called
+					timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+				}
 				String fileName = shPref.getString(getString(R.string.pref_key_filename), "_UploadMLP") + timeStamp+".jpg";
 				String description = shPref.getString(getString(R.string.pref_key_filedesc), "UploadMLP picture");
 				Image imageModelObj = conn.createImage(attributes, folderId, fileName, data, description);
@@ -282,6 +288,7 @@ public class UploadMlpActivity extends SherlockActivity {
 		case ACTION_TAKE_PHOTO_B:
 			hasCameraOKed = false;
 			hasCameraCanceled = false;
+			hasBeenStartedBySendIntent = false;
 			File f = null;
 			try {
 				f = createImageFile();
@@ -323,6 +330,26 @@ public class UploadMlpActivity extends SherlockActivity {
 		}
 
 	}
+	
+	
+	private void handlePictureFromSendIntent() {
+		//TODO reuse handleBigCameraPhoto() by checking whether to add to Gallery 
+		if (mCurrentPhotoPath != null) {
+			setPicFromExifThumbnail();
+			//galleryAddPic();
+			
+			// check if logged in to to upload
+			if (accessToken == null) {
+				Toast.makeText(this, "Please login first", Toast.LENGTH_LONG).show();
+	        	// login done in onResume()
+				//  after login, upload is done in webview.setWebViewClient code
+			} else {
+				// upload to save photo in CTCT Library
+				new UploadImageAsyncTask().execute(mCurrentPhotoPath);
+				mCurrentPhotoPath = null;
+			}
+		}
+	}
 
 
 	/** Called when the activity is first created. */
@@ -360,12 +387,21 @@ public class UploadMlpActivity extends SherlockActivity {
             				mImageView.setVisibility(View.VISIBLE);
             	            webview.setVisibility(View.GONE);
             				
-            	            // continue with what would have been done in handleBigCameraPhoto() and onResume()
-            	            //  upload to save photo in CTCT Library
-            				new UploadImageAsyncTask().execute(mCurrentPhotoPath);
-            				mCurrentPhotoPath = null;
-            				//  return to Camera app
-            				dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
+            	            if (hasBeenStartedBySendIntent) {
+            	            	// continue with what would have been done in handlePictureFromSendIntent() and onResume()
+            	            	//  upload to save photo in CTCT Library
+            	            	new UploadImageAsyncTask().execute(mCurrentPhotoPath);
+                				mCurrentPhotoPath = null;
+                				//  don't return to Camera app since hasBeenStartedBySendIntent==true
+
+            	            } else {
+            	            	// continue with what would have been done in handleBigCameraPhoto() and onResume()
+                	            //  upload to save photo in CTCT Library
+                				new UploadImageAsyncTask().execute(mCurrentPhotoPath);
+                				mCurrentPhotoPath = null;
+                				//  return to Camera app
+                				dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
+            	            }
             			}
 
             			// don't go to redirectUri
@@ -391,26 +427,72 @@ public class UploadMlpActivity extends SherlockActivity {
 //				((savedInstanceState!=null) ? String.valueOf(savedInstanceState.getBoolean("hascameracanceled")) : null)
 //		);
 //		Log.d(LOG_TAG, "** exiting onCreate(), hasCameraCanceled "+hasCameraCanceled);
+		
+		// if this is from the Share menu of Gallery app
+		Intent intent = getIntent();
+		String type = intent.getType();
+		if (Intent.ACTION_SEND.equals(intent.getAction()) && type!=null && type.startsWith("image/")) {
+			Bundle extras = intent.getExtras();
+			if (extras!= null && extras.containsKey(Intent.EXTRA_STREAM)) {
+				// Get file path
+				Uri uri = (Uri) extras.getParcelable(Intent.EXTRA_STREAM);
+				String filename = mParseUriToFilepath(uri);
+				
+				if (filename != null) {
+					mCurrentPhotoPath = filename;
+					hasBeenStartedBySendIntent = true;
+					handlePictureFromSendIntent();
+				}
+			}
+			// remove data so activity will not keep processing intent
+			intent.removeExtra(Intent.EXTRA_STREAM);
+		} 
 	}
-        
+    
 	private String mExtractToken(String url) {
 		// url has format https://localhost/#access_token=<tokenstring>&token_type=Bearer&expires_in=315359999
 		String[] sArray = url.split("access_token=");
 		return (sArray[1].split("&token_type=Bearer"))[0];
 	}
 	
+	private String mParseUriToFilepath(Uri uri) {
+		// reference -- Android: Add your application to the "Share" menu
+		//  http://twigstechtips.blogspot.com/2011/10/android-sharing-images-or-files-through.html
+		
+		// if uri is in Send intent from Gallery app's Share menu, uri is 'content://media/external/images/media/1'
+		String[] projection = { MediaStore.Images.Media.DATA }; // value is '_data'
+		Cursor cursor = getContentResolver().query(uri, projection, null, null, null);
+		if (cursor != null) {
+			// could be null if uri is not from Gallery app
+			//  e.g. if you used OI file manager for picking the media
+			int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+			cursor.moveToFirst();
+			String selectedImagePath = cursor.getString(column_index);
+			if (selectedImagePath != null) {
+				return selectedImagePath;
+			}
+		}
+		// if uri is not from Gallery app, e.g. from OI file manager
+		String filemanagerPath = uri.getPath();
+		if (filemanagerPath != null) {
+			return filemanagerPath;
+		}
+
+		return null;
+	}
+	
 	
 	@Override
 	protected void onResume() {
 		super.onResume();
-		if (accessToken==null && hasCameraOKed) {
+		if ( (accessToken==null && hasCameraOKed) || (accessToken==null && hasBeenStartedBySendIntent) ) {
 			// need to get access token with OAuth2.0
             mImageView.setVisibility(View.GONE);
             webview.setVisibility(View.VISIBLE);
-            // do OAuth2 login
+            // do OAuth2 login, logic is set up in webview.setWebViewClient()
             String authorizationUri = mReturnAuthorizationRequestUri();
             webview.loadUrl(authorizationUri);
-		} else if (!hasCameraCanceled && !hasStartedActivityTakePictureIntent)
+		} else if (!hasCameraCanceled && !hasStartedActivityTakePictureIntent && !hasBeenStartedBySendIntent )
 				dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
 //		Log.d(LOG_TAG, "** exiting onResume(), hasCameraCanceled "+hasCameraCanceled);
 	}
@@ -487,6 +569,7 @@ public class UploadMlpActivity extends SherlockActivity {
 		outState.putBoolean("hascameraoked", hasCameraOKed);
 		outState.putString("accesstoken", accessToken);
 		outState.putString("username", userName);
+		outState.putBoolean("hasBeenStartedBySendIntent", hasBeenStartedBySendIntent);
 		super.onSaveInstanceState(outState);
 	}
 
@@ -502,6 +585,7 @@ public class UploadMlpActivity extends SherlockActivity {
 		hasCameraOKed = savedInstanceState.getBoolean("hascameraoked");
 		accessToken = savedInstanceState.getString("accesstoken");
 		userName = savedInstanceState.getString("username");
+		hasBeenStartedBySendIntent = savedInstanceState.getBoolean("hasBeenStartedBySendIntent");
 //		Log.d(LOG_TAG, "** exiting onRestoreInstanceState(), savedInstanceState hasCameraCanceled "+hasCameraCanceled);
 	}
 
