@@ -47,366 +47,95 @@ import com.actionbarsherlock.view.MenuItem;
 import com.ctctlabs.ctctwsjavalib.CTCTConnection;
 import com.ctctlabs.ctctwsjavalib.Image;
 
-
+/**
+ * This is main activity of app.
+ *  It normally starts the Camera app,
+ *  then uploads pictures taken to CTCT MyLibrary Plus.
+ *  It can be called by another app to upload picture with Intent ACTION_SEND
+ * @author ckim
+ *
+ */
 public class UploadMlpActivity extends SherlockActivity {
 
-	private static final int ACTION_TAKE_PHOTO_B = 1;
-
-	private static final String BITMAP_STORAGE_KEY = "viewbitmap";
-	private ImageView mImageView;
-	private Bitmap mImageBitmap;
+	private static final int ACTION_TAKE_PHOTO_B		= 101;
+	private static final String BITMAP_STORAGE_KEY		= "viewbitmap";
+	private static final String CURRENT_PHOTO_PATH_KEY	= "currentphotopath";
+	private static final String TIMESTAMP_KEY			= "timestampinfilename";
+    private static final String REDIRECT_URI			= "https://uploadctctdomain";
+    private static final String AUTHORIZE_PATH			= "https://oauth2.constantcontact.com/oauth2/oauth/siteowner/authorize"; 
+    private static final String CLIENT_ID				= "8fc5424e-d919-4739-823f-f78a465b61d1";
+	private static final String JPEG_FILE_PREFIX		= "IMG_";
+	private static final String JPEG_FILE_SUFFIX		= ".jpg";
+	private static final String LOG_TAG					= UploadMlpActivity.class.getSimpleName();
 	
-	private WebView webview;
+	private final BitmapFactory.Options bmOptions		= new BitmapFactory.Options();
 	
-	private final BitmapFactory.Options bmOptions = new BitmapFactory.Options();
-
-	private static final String CURRENT_PHOTO_PATH_KEY = "currentphotopath";
-	private static final String TIMESTAMP_KEY = "timestampinfilename";
-	private String mCurrentPhotoPath;
-    
-	private CTCTConnection conn;    
-    private HashMap<String, Object> attributes;
-    
-    private static final String REDIRECT_URI	= "https://uploadctctdomain";
-    private static final String AUTHORIZE_PATH	= "https://oauth2.constantcontact.com/oauth2/oauth/siteowner/authorize"; 
-    private static final String CLIENT_ID		= "8fc5424e-d919-4739-823f-f78a465b61d1";
-    private String accessToken;
-    private String userName;
-
-	private static final String JPEG_FILE_PREFIX = "IMG_";
-	private static final String JPEG_FILE_SUFFIX = ".jpg";
+	private ImageView				mImageView;
+	private WebView					mWebview;
+	private Bitmap					mImageBitmap;
+	private String					mAccessToken;
+	private AlbumStorageDirFactory	mAlbumStorageDirFactory;
+	private String					mCurrentPhotoPath;
+	private CTCTConnection			conn;    
+    private HashMap<String, Object>	attributes;
+    private String					userName;
+	private String					timeStamp;
 	
-	private static final String LOG_TAG			 = UploadMlpActivity.class.getSimpleName();
-
-	private AlbumStorageDirFactory mAlbumStorageDirFactory	= null;
-	private String timeStamp;
-	private Boolean hasCameraCanceled = false;
-	private Boolean hasCameraOKed = false;
-	private Boolean hasStartedActivityTakePictureIntent		= false;
-	private Boolean hasBeenStartedBySendIntent				= false;
+	private Boolean hasCameraCanceled					= false;
+	private Boolean hasCameraOKed						= false;
+	private Boolean hasStartedActivityTakePictureIntent	= false;
+	private Boolean hasBeenStartedBySendIntent			= false;
 	
 	
-	private class UploadImageAsyncTask extends AsyncTask<String, Void, String> {
-
-		@Override
-		protected String doInBackground(String... paths) {
-			String picturePathSdCard = paths[0];
-			
-			/* Get the size of the image */
-			bmOptions.inJustDecodeBounds = true;
-			BitmapFactory.decodeFile(picturePathSdCard, bmOptions);
-			if( bmOptions.outWidth==-1 || bmOptions.outHeight==-1 ) return null;
-			
-			// set BitmapFactory.Options object to be used by decodeFile()
-			int scaleFactorUpload = calculateInSampleSize(bmOptions, 200, 150); // these dim seems to create files in MLP mostly 50-70 KB, sometimes 100+ KB
-//			Log.d(LOG_TAG, "** picture outWidth, outHeight: "+bmOptions.outWidth+", "+bmOptions.outHeight);
-//			Log.d(LOG_TAG, "** inSampleSize is "+scaleFactorUpload);
-			bmOptions.inJustDecodeBounds = false;
-			bmOptions.inSampleSize = scaleFactorUpload;
-			bmOptions.inPurgeable = true;
-			
-			File file = new File(picturePathSdCard);
-			Bitmap bm = BitmapFactory.decodeFile(file.getAbsolutePath(), bmOptions);
-			
-			String imageUrl;
-			try {
-				// rotate picture if portrait
-				ExifInterface exif = new ExifInterface(picturePathSdCard);
-//				Log.d(LOG_TAG, "** exif orientation tag value is "+exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0));
-//				Log.d(LOG_TAG, "** exif image width, length, hasThumbnail: "+exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, -1) +
-//						", "+exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, -1) +
-//						", "+exif.hasThumbnail());
-				if (ExifInterface.ORIENTATION_ROTATE_90 == exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0)) {
-					Matrix matrix = new Matrix();
-					matrix.preRotate(90f);
-					bm = Bitmap.createBitmap(bm, 0, 0, bmOptions.outWidth, bmOptions.outHeight, matrix, true);
-				}
-
-				ByteArrayOutputStream bos = new ByteArrayOutputStream();
-				bm.compress(CompressFormat.JPEG, 100, bos);
-				byte[] data = bos.toByteArray();
-
-				conn = new CTCTConnection();
-				//if (userName == null)
-						userName = conn.authenticateOAuth2(accessToken);
-				if (userName == null) return null;
-				Log.d(LOG_TAG, "** authenticated with "+userName);
-
-				attributes = new HashMap<String, Object>();
-				SharedPreferences shPref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-				String folderId = shPref.getString(getString(R.string.pref_key_folderid), "2"); //default is "2";
-				if (timeStamp==null) {
-					// not yet set if handling a Send intent so createImageFile() was not called
-					timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-				}
-				String fileName = shPref.getString(getString(R.string.pref_key_filename), "_UploadMLP") + timeStamp+".jpg";
-				String description = shPref.getString(getString(R.string.pref_key_filedesc), "UploadMLP picture");
-				Image imageModelObj = conn.createImage(attributes, folderId, fileName, data, description);
-				imageModelObj.commit();
-				imageUrl = (String)imageModelObj.getAttribute("ImageURL");
-			} catch (SocketException se) {
-				return SocketException.class.getSimpleName();
-			} catch (UnknownHostException uke) {	
-				return UnknownHostException.class.getSimpleName();
-			} catch (ClientProtocolException e) {
-				e.printStackTrace();
-				return null;
-			} catch (IOException e) {
-				e.printStackTrace();
-				return null;
-			} catch (JSONException e) {
-				e.printStackTrace();
-				return null;
-			} finally {
-				attributes = null;
-			}
-			
-			return imageUrl;
-		}
-
-		@Override
-		protected void onPostExecute(String result) {
-			String message = "";
-			if (result == null) {
-//				Log.d(LOG_TAG, "**Error -- picture not uploaded");
-				// TODO try detect different errors? e.g. not MLP and exceeded 5 images, image too large? 
-				if (conn.getResponseStatusCode() == HttpStatus.SC_BAD_REQUEST) {
-					message = "Snap! Possible bad folder id setting.";
-				} else if (conn.getResponseStatusCode() == 0) {
-					message = "Snap! Please try again. (Unknown reason.)";
-				} else {
-					message = "Snap! Not uploaded. ("+conn.getResponseStatusReason()+".)";
-				}
-			}
-			else if ( result.equals(UnknownHostException.class.getSimpleName())
-					  || result.equals(SocketException.class.getSimpleName()) ) {
-				message = "Please check your Internet connection. ("+result+".)";
-			}
-			else if (result != null) {
-				message = "Uploaded to CTCT MyLibrary Plus";
-//				Log.d(LOG_TAG, "** Image Url is "+result);
-			}
-			Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show();
-			conn = null;
-			super.onPostExecute(result);
-		}
-		
-	}
-	
-	public static int calculateInSampleSize(
-            BitmapFactory.Options options, int reqWidth, int reqHeight) {
-		// Raw height and width of image
-		final int height = options.outHeight;
-		final int width = options.outWidth;
-		int inSampleSize = 1;
-
-		if (height > reqHeight || width > reqWidth) {
-			if (width > height) {
-				inSampleSize = Math.round((float)height / (float)reqHeight);
-			} else {
-				inSampleSize = Math.round((float)width / (float)reqWidth);
-			}
-		}
-		return inSampleSize;
-	}
-
-	
-	/* Photo album for this application */
-	private String getAlbumName() {
-		return getString(R.string.album_name);
-	}
-
-	private File getAlbumDir() {
-		File storageDir = null;
-
-		if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
-			
-			storageDir = mAlbumStorageDirFactory.getAlbumStorageDir(getAlbumName());
-
-			if (storageDir != null) {
-				if (! storageDir.mkdirs()) {
-					if (! storageDir.exists()){
-//						Log.d("CameraSample", "failed to create directory");
-						return null;
-					}
-				}
-			}
-			
-		} else {
-//			Log.v(getString(R.string.app_name), "External storage is not mounted READ/WRITE.");
-		}
-		
-		return storageDir;
-	}
-
-	private File createImageFile() throws IOException {
-		// Create an image file name
-		timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-		String imageFileName = JPEG_FILE_PREFIX + timeStamp + "_";
-		File albumF = getAlbumDir();
-		File imageF = File.createTempFile(imageFileName, JPEG_FILE_SUFFIX, albumF);
-		return imageF;
-	}
-
-
-	private void setPicFromExifThumbnail() {
-		try {
-			ExifInterface exif = new ExifInterface(mCurrentPhotoPath);
-			if (exif.hasThumbnail()) {
-				byte[] data = exif.getThumbnail();
-				mImageBitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
-				// rotate if portrait
-				if (ExifInterface.ORIENTATION_ROTATE_90 == exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0)) {
-					Matrix matrix = new Matrix();
-					matrix.preRotate(90f);
-					mImageBitmap = Bitmap.createBitmap(mImageBitmap, 0, 0, mImageBitmap.getWidth(), mImageBitmap.getHeight(), matrix, true);
-				}
-			}
-			/* Associate the Bitmap to the ImageView */
-			mImageView.setImageBitmap(mImageBitmap);
-			mImageView.setVisibility(View.VISIBLE);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		
-	}
-	
-	private void galleryAddPic() {
-		    Intent mediaScanIntent = new Intent("android.intent.action.MEDIA_SCANNER_SCAN_FILE");
-			File f = new File(mCurrentPhotoPath);
-		    Uri contentUri = Uri.fromFile(f);
-		    mediaScanIntent.setData(contentUri);
-		    this.sendBroadcast(mediaScanIntent);
-	}
-
-	
-	private void dispatchTakePictureIntent(int actionCode) {
-
-		Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-
-		switch(actionCode) {
-		case ACTION_TAKE_PHOTO_B:
-			hasCameraOKed = false;
-			hasCameraCanceled = false;
-			hasBeenStartedBySendIntent = false;
-			File f = null;
-			try {
-				f = createImageFile();
-				mCurrentPhotoPath = f.getAbsolutePath();
-//				Log.d("UploadMlpActivity", "photo path is "+mCurrentPhotoPath);
-				takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, Uri.fromFile(f));
-			} catch (IOException e) {
-				e.printStackTrace();
-				f = null;
-				mCurrentPhotoPath = null;
-			}
-			break;
-
-		default:
-			break;			
-		} // switch
-
-		startActivityForResult(takePictureIntent, actionCode);
-		hasStartedActivityTakePictureIntent = true;
-	}
-
-
-	private void handleBigCameraPhoto() {
-//		Log.d(LOG_TAG, "** in handleBigPhoto, mCurrentPhotoPath is "+mCurrentPhotoPath);
-		if (mCurrentPhotoPath != null) {
-			setPicFromExifThumbnail();
-			galleryAddPic();
-			
-			// check if logged in to to upload
-			if (accessToken == null) {
-				Toast.makeText(this, "Please login first", Toast.LENGTH_LONG).show();
-	        	// login done in onResume()
-				//  after login, upload is done in webview.setWebViewClient code
-			} else {
-				// upload to save photo in CTCT Library
-				new UploadImageAsyncTask().execute(mCurrentPhotoPath);
-				mCurrentPhotoPath = null;
-			}
-		}
-
-	}
-	
-	
-	private void handlePictureFromSendIntent() {
-		//TODO reuse handleBigCameraPhoto() by checking whether to add to Gallery 
-		if (mCurrentPhotoPath != null) {
-			setPicFromExifThumbnail();
-			//galleryAddPic();
-			
-			// check if logged in to to upload
-			if (accessToken == null) {
-				Toast.makeText(this, "Please login first", Toast.LENGTH_LONG).show();
-	        	// login done in onResume()
-				//  after login, upload is done in webview.setWebViewClient code
-			} else {
-				// upload to save photo in CTCT Library
-				new UploadImageAsyncTask().execute(mCurrentPhotoPath);
-				mCurrentPhotoPath = null;
-			}
-		}
-	}
-
-
 	/** Called when the activity is first created. */
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.main);
 		
-		mImageView = (ImageView) findViewById(R.id.imageView1);
-		webview = (WebView) findViewById(R.id.webview);
-		
-		mImageBitmap = null;
+		mImageView = (ImageView) findViewById(R.id.imageview);
+		mWebview = (WebView) findViewById(R.id.webview);
 		
 		// check whether access token already saved
-		final String keyAccessTokey = getString(R.string.key_shpref_access_token);
-        accessToken = getPreferences(Context.MODE_PRIVATE).getString(keyAccessTokey, null);
-        if (accessToken == null) {
-            // set up webview for OAuth2 login
-            webview.setWebViewClient(new WebViewClient() {
+		final String keyAccessToken = getString(R.string.key_shpref_access_token);
+        mAccessToken = getPreferences(Context.MODE_PRIVATE).getString(keyAccessToken, null);
+        if (mAccessToken == null) {
+            
+        	// set up mWebview for OAuth2 login
+            mWebview.setWebViewClient(new WebViewClient() {
             	@Override
             	public boolean shouldOverrideUrlLoading(WebView view, String url) {
             		if ( url.startsWith(REDIRECT_URI) ) {
             			
             			// extract OAuth2 access_token appended in url
             			if ( url.indexOf("access_token=") != -1 ) {
-            				accessToken = mExtractToken(url);
+            				mAccessToken = mExtractToken(url);
 
             				// store in default SharedPreferences
             				Editor e = getPreferences(Context.MODE_PRIVATE).edit();
-            				e.putString(keyAccessTokey, accessToken);
+            				e.putString(keyAccessToken, mAccessToken);
             				e.commit();
             				
             				// login successful
             				Toast.makeText(getApplicationContext(), "Login successful, uploading picture", Toast.LENGTH_LONG).show();
             				mImageView.setVisibility(View.VISIBLE);
-            	            webview.setVisibility(View.GONE);
+            	            mWebview.setVisibility(View.GONE);
             				
-            	            if (hasBeenStartedBySendIntent) {
-            	            	// continue with what would have been done in handlePictureFromSendIntent() and onResume()
-            	            	//  upload to save photo in CTCT Library
-            	            	new UploadImageAsyncTask().execute(mCurrentPhotoPath);
-                				mCurrentPhotoPath = null;
-                				//  don't return to Camera app since hasBeenStartedBySendIntent==true
-
-            	            } else {
-            	            	// continue with what would have been done in handleBigCameraPhoto() and onResume()
-                	            //  upload to save photo in CTCT Library
-                				new UploadImageAsyncTask().execute(mCurrentPhotoPath);
-                				mCurrentPhotoPath = null;
-                				//  return to Camera app
-                				dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
+            	            // continue with where left off before having to login
+            	            
+            	            //  continue with what would have been done in handlePicture(): upload to save image in CTCT library 
+            	            new UploadImageAsyncTask().execute(mCurrentPhotoPath);
+            				mCurrentPhotoPath = null;
+            				//  continue with what would have been done in onResume(): return to Camera app
+            	            if (!hasCameraCanceled && !hasStartedActivityTakePictureIntent && !hasBeenStartedBySendIntent) {
+            	            	dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
             	            }
             			}
 
-            			// don't go to redirectUri
+            			// don't go to redirectUri; it is a dummy uri anyway
             			return true;
             		}
+            		
 
             		// load the webpage from url (login and grant access)
             		Toast.makeText(getApplicationContext(), "Loading page...", Toast.LENGTH_SHORT).show();
@@ -415,20 +144,22 @@ public class UploadMlpActivity extends SherlockActivity {
             });
         }
 		
+        
+        // set picture file base directory path
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.FROYO) {
+			// directory is /Pictures/ in Froyo
 			mAlbumStorageDirFactory = new FroyoAlbumDirFactory();
 		} else {
+			// directory is /DCIM/
 			mAlbumStorageDirFactory = new BaseAlbumDirFactory();
 		}
 		
+		
+		// store default values for Preference settings
 		PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
 		
-//		Log.d(LOG_TAG, "** savedInstanceState value in onCreate(), hasCameraCanceled "+
-//				((savedInstanceState!=null) ? String.valueOf(savedInstanceState.getBoolean("hascameracanceled")) : null)
-//		);
-//		Log.d(LOG_TAG, "** exiting onCreate(), hasCameraCanceled "+hasCameraCanceled);
 		
-		// if this is from the Share menu of Gallery app
+		// check whether this is ACTION_SEND intent called from the Share menu in Gallery app
 		Intent intent = getIntent();
 		String type = intent.getType();
 		if (Intent.ACTION_SEND.equals(intent.getAction()) && type!=null && type.startsWith("image/")) {
@@ -440,8 +171,10 @@ public class UploadMlpActivity extends SherlockActivity {
 				
 				if (filename != null) {
 					mCurrentPhotoPath = filename;
-					hasBeenStartedBySendIntent = true;
-					handlePictureFromSendIntent();
+					
+					hasBeenStartedBySendIntent = true;				// hasBeenStartedBySendIntent = true
+					
+					handleActionSendIntentPicture();
 				}
 			}
 			// remove data so activity will not keep processing intent
@@ -449,17 +182,27 @@ public class UploadMlpActivity extends SherlockActivity {
 		} 
 	}
     
+	/**
+	 * Helper to extract access token appended in url string
+	 * @param url is the string url
+	 * @return the access token
+	 */
 	private String mExtractToken(String url) {
 		// url has format https://localhost/#access_token=<tokenstring>&token_type=Bearer&expires_in=315359999
 		String[] sArray = url.split("access_token=");
 		return (sArray[1].split("&token_type=Bearer"))[0];
 	}
 	
+	/**
+	 * Helper to extract file path from uri
+	 * @param uri is the uri for the picture
+	 * @return file path for the picture
+	 */
 	private String mParseUriToFilepath(Uri uri) {
 		// reference -- Android: Add your application to the "Share" menu
 		//  http://twigstechtips.blogspot.com/2011/10/android-sharing-images-or-files-through.html
 		
-		// if uri is in Send intent from Gallery app's Share menu, uri is 'content://media/external/images/media/1'
+		// if uri is in ACTION_SEND intent from Gallery app's Share menu, uri is 'content://media/external/images/media/1'
 		String[] projection = { MediaStore.Images.Media.DATA }; // value is '_data'
 		Cursor cursor = getContentResolver().query(uri, projection, null, null, null);
 		if (cursor != null) {
@@ -481,22 +224,31 @@ public class UploadMlpActivity extends SherlockActivity {
 		return null;
 	}
 	
-	
+	/** Life cycle method. */
 	@Override
 	protected void onResume() {
 		super.onResume();
-		if ( (accessToken==null && hasCameraOKed) || (accessToken==null && hasBeenStartedBySendIntent) ) {
+		// check whether Cancel out of Camera app before any picture taken
+		if (mImageBitmap == null) mImageView.setVisibility(View.INVISIBLE);
+		
+		// should start Camera app?
+		// check whether need to login
+		if ( (mAccessToken==null && hasCameraOKed) || (mAccessToken==null && hasBeenStartedBySendIntent) ) {
 			// need to get access token with OAuth2.0
             mImageView.setVisibility(View.GONE);
-            webview.setVisibility(View.VISIBLE);
-            // do OAuth2 login, logic is set up in webview.setWebViewClient()
+            mWebview.setVisibility(View.VISIBLE);
+            // do OAuth2 login, logic is set up in mWebview.setWebViewClient()
             String authorizationUri = mReturnAuthorizationRequestUri();
-            webview.loadUrl(authorizationUri);
-		} else if (!hasCameraCanceled && !hasStartedActivityTakePictureIntent && !hasBeenStartedBySendIntent )
-				dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
-//		Log.d(LOG_TAG, "** exiting onResume(), hasCameraCanceled "+hasCameraCanceled);
+            mWebview.loadUrl(authorizationUri);
+		} else if (!hasCameraCanceled && !hasStartedActivityTakePictureIntent && !hasBeenStartedBySendIntent) {
+			dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
+		}
 	}
 	
+	/**
+	 * Helper to form url to do OAuth2 authentication by CTCT WebServices
+	 * @return the url to do OAuth2 authentication
+	 */
 	private String mReturnAuthorizationRequestUri() {
     	StringBuilder sb = new StringBuilder();
     	sb.append(AUTHORIZE_PATH);
@@ -507,6 +259,335 @@ public class UploadMlpActivity extends SherlockActivity {
     }
 	
 	
+	/**
+	 * Helper to start activity in the Camera app
+	 * @param actionCode is used to identify the result from the Camera app activity
+	 */
+	private void dispatchTakePictureIntent(int actionCode) {
+		Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+
+		switch(actionCode) {
+		case ACTION_TAKE_PHOTO_B:
+			hasCameraOKed = false;					// hasCameraOKed = false
+			hasCameraCanceled = false;					// hasCameraCanceled = false
+			hasBeenStartedBySendIntent = false;						// hasBeenStartedBySendIntent = false
+			File f = null;
+			try {
+				f = createImageFile();
+				mCurrentPhotoPath = f.getAbsolutePath();
+				takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, Uri.fromFile(f));
+			} catch (IOException e) {
+				e.printStackTrace();
+				f = null;
+				mCurrentPhotoPath = null;
+			}
+			break;
+		default:
+			break;			
+		}
+
+		startActivityForResult(takePictureIntent, actionCode);
+		
+		hasStartedActivityTakePictureIntent = true;			// hasStartedActivityTakePictureIntent = true
+	}
+
+	
+	/**
+	 * Helper to create a picture file to store picture bitmap image
+	 * @return the file created
+	 * @throws IOException
+	 */
+	private File createImageFile() throws IOException {
+		// Create an image file name
+		timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+		String imageFileName = JPEG_FILE_PREFIX + timeStamp + "_";
+		File albumF = getAlbumDir();
+		File imageF = File.createTempFile(imageFileName, JPEG_FILE_SUFFIX, albumF);
+		return imageF;
+	}
+	
+	/**
+	 * Helper to make directory for the picture file
+	 * @return a directory (file) object
+	 */
+	private File getAlbumDir() {
+		File storageDir = null;
+		if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
+			storageDir = mAlbumStorageDirFactory.getAlbumStorageDir(getAlbumName());
+			if (storageDir != null) {
+				if (! storageDir.mkdirs()) {
+					if (! storageDir.exists()){
+						Log.w(LOG_TAG, "Failed to create directory: "+ storageDir.getAbsolutePath());
+						return null;
+					}
+				}
+			}
+		} else {
+			Log.w(LOG_TAG, getString(R.string.app_name)+": External storage is not mounted READ/WRITE.");
+		}
+		
+		return storageDir;
+	}
+	
+	/**
+	 * Helper to set the directory subfolder
+	 * @return the subfolder name
+	 */
+	private String getAlbumName() {
+		return getString(R.string.album_name);
+	}
+	
+	
+	/**
+	 * Callback to return result from the Camera app activity started by app
+	 */
+	@Override
+	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+		switch (requestCode) {
+		case ACTION_TAKE_PHOTO_B: {
+			hasStartedActivityTakePictureIntent = false;	// hasStartedActivityTakePictureIntent = false
+			
+			if (resultCode == RESULT_OK) {
+				hasCameraOKed = true;				// hasCameraOKed = true
+				
+				handleCameraPhoto();
+			}
+			if (resultCode == RESULT_CANCELED) {
+				hasCameraCanceled = true;				// hasCameraCanceled = true
+				
+				new File(mCurrentPhotoPath).delete();
+			}
+			break;
+		} // ACTION_TAKE_PHOTO_B
+		} // switch
+	}
+
+	
+	/**
+	 * Display picture in the Gallery app,
+	 *  and call routine to display picture thumbnail in app, and to do upload
+	 */
+	private void handleCameraPhoto() {
+		if (mCurrentPhotoPath != null) {
+			// add picture to be displayed by Gallery app
+			galleryAddPic();
+		}
+		handlePicture();
+	}
+	
+	/**
+	 * Call routine to display picture thumbnail in app, and to do upload
+	 */
+	private void handleActionSendIntentPicture() {
+		handlePicture();
+	}
+	
+	/**
+	 * Routine to display picture thumbnail in app
+	 *  and start background thread to do upload if already authenticated
+	 */
+	private void handlePicture() {
+		if (mCurrentPhotoPath != null) {
+			// first, display picture thumbnail in app
+			setPicFromExifThumbnail();
+
+			// next, check if logged in so as to upload
+			if (mAccessToken == null) {
+				Toast.makeText(this, "Please login first", Toast.LENGTH_LONG).show();
+				// login done in onResume()
+				//  after login, upload is done in mWebview.setWebViewClient code
+			} else {
+				// upload to save photo in CTCT Library
+				new UploadImageAsyncTask().execute(mCurrentPhotoPath);
+				mCurrentPhotoPath = null;
+			}
+		}
+	}
+	
+	/**
+	 * Helper to display picture in the Gallery app
+	 */
+	private void galleryAddPic() {
+		    Intent mediaScanIntent = new Intent("android.intent.action.MEDIA_SCANNER_SCAN_FILE");
+			File f = new File(mCurrentPhotoPath);
+		    Uri contentUri = Uri.fromFile(f);
+		    mediaScanIntent.setData(contentUri);
+		    this.sendBroadcast(mediaScanIntent);
+	}
+
+	/**
+	 * Helper to display picture thumbnail in app
+	 */
+	private void setPicFromExifThumbnail() {
+		try {
+			ExifInterface exif = new ExifInterface(mCurrentPhotoPath);
+			if (exif.hasThumbnail()) { //TODO a picture cropped within Gallery app seems does not have exif so will not display
+				byte[] data = exif.getThumbnail();
+				mImageBitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
+				// rotate if portrait
+				if (ExifInterface.ORIENTATION_ROTATE_90 == exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0)) {
+					Matrix matrix = new Matrix();
+					matrix.preRotate(90f);
+					mImageBitmap = Bitmap.createBitmap(mImageBitmap, 0, 0, mImageBitmap.getWidth(), mImageBitmap.getHeight(), matrix, true);
+				}
+			}
+			// associate the bitmap to the imageView
+			mImageView.setImageBitmap(mImageBitmap);
+			mImageView.setVisibility(View.VISIBLE);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	
+	/**
+	 * Inner class that extends AyncTask class to do upload in a background thread
+	 * @author ckim
+	 *
+	 */
+	private class UploadImageAsyncTask extends AsyncTask<String, Void, String> {
+		
+		@Override
+		protected String doInBackground(String... paths) {
+			String picturePathSdCard = paths[0];
+			
+			// get the size of the image
+			bmOptions.inJustDecodeBounds = true;
+			BitmapFactory.decodeFile(picturePathSdCard, bmOptions);
+			if( bmOptions.outWidth==-1 || bmOptions.outHeight==-1 ) {
+				return null; // there is an error
+			}
+			
+			// set BitmapFactory.Options object to be used by decodeFile()
+			int scaleFactorUpload = calculateInSampleSize(bmOptions, 200, 150); // these dim seems to create files in MLP mostly 50-70 KB, sometimes 100+ KB
+//			Log.d(LOG_TAG, "** picture outWidth, outHeight: "+bmOptions.outWidth+", "+bmOptions.outHeight);
+//			Log.d(LOG_TAG, "** inSampleSize is "+scaleFactorUpload);
+			bmOptions.inJustDecodeBounds = false;
+			bmOptions.inSampleSize = scaleFactorUpload;
+			bmOptions.inPurgeable = true;
+			
+			// get bitmap from image file
+			File file = new File(picturePathSdCard);
+			Bitmap bm = BitmapFactory.decodeFile(file.getAbsolutePath(), bmOptions);
+			
+			String imageUrl;
+			try {
+				// rotate picture if portrait
+				ExifInterface exif = new ExifInterface(picturePathSdCard);
+				if (ExifInterface.ORIENTATION_ROTATE_90 == exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0)) {
+					Matrix matrix = new Matrix();
+					matrix.preRotate(90f);
+					bm = Bitmap.createBitmap(bm, 0, 0, bmOptions.outWidth, bmOptions.outHeight, matrix, true);
+				}
+
+				// get byte array of picture image
+				ByteArrayOutputStream bos = new ByteArrayOutputStream();
+				bm.compress(CompressFormat.JPEG, 100, bos);
+				byte[] data = bos.toByteArray();
+
+				// some setup needed by java wrapper library to upload image
+				
+				conn = new CTCTConnection();
+				userName = conn.authenticateOAuth2(mAccessToken); //TODO if userName has been cached try skipping this
+				if (userName == null) return null; // authentication failed
+//				Log.d(LOG_TAG, "** authenticated with "+userName);
+
+				// set values for attributes map used by ctctconnection object
+				attributes = new HashMap<String, Object>();
+				// retrieve settings values from default SharedPreferences
+				SharedPreferences shPref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+				String folderId = shPref.getString(getString(R.string.pref_key_folderid), "2"); //default is "2";
+				if (timeStamp==null) {
+					// not set if handling ACTION_SEND intent from Share in Gallery, so createImageFile() was not called
+					timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+				}
+				String fileName = shPref.getString(getString(R.string.pref_key_filename), "_UploadMLP")
+						+ timeStamp +".jpg";
+				String description = shPref.getString(getString(R.string.pref_key_filedesc), "UploadMLP picture");
+				
+				// call the java wrapper library methods
+				Image imageModelObj = conn.createImage(attributes, folderId, fileName, data, description);
+				imageModelObj.commit();
+				
+				imageUrl = (String)imageModelObj.getAttribute("ImageURL");
+				
+			} catch (SocketException se) {
+				return SocketException.class.getSimpleName();		// could be wifi not available
+			} catch (UnknownHostException uhe) {	
+				return UnknownHostException.class.getSimpleName();	// could be wifi not available
+			} catch (ClientProtocolException e) {
+				e.printStackTrace();
+				return null;
+			} catch (IOException e) {
+				e.printStackTrace();
+				return null;
+			} catch (JSONException e) {
+				e.printStackTrace();
+				return null;
+			} finally {
+				attributes = null;
+			}
+			
+			return imageUrl;
+		}
+
+		@Override
+		protected void onPostExecute(String result) {
+			String message = "";
+			if (result == null) { //TODO try detect other errors: image too large?, not MLP and exceeded 5 images
+//				Log.d(LOG_TAG, "**Error, imageUrl is null -- picture not uploaded");
+				if (conn.getResponseStatusCode() == HttpStatus.SC_BAD_REQUEST) { 
+					message = "Snap! Possible bad folder id setting.";
+				} else if (conn.getResponseStatusCode() == 0) {
+					message = "Snap! Please try again. (Reason unknown)";
+				} else {
+					message = "Snap! Not uploaded. ("+conn.getResponseStatusReason()+")";
+				}
+			}
+			else if ( result.equals(UnknownHostException.class.getSimpleName())
+					  || result.equals(SocketException.class.getSimpleName()) ) {
+				message = "Please check your Internet connection. (" + result + ")";
+			}
+			else if (result != null) {
+				message = "Uploaded to CTCT MyLibrary Plus";
+//				Log.d(LOG_TAG, "**Image Url is "+result -- picture uploaded);
+			}
+			// Show toast message
+			Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show();
+			conn = null;
+			super.onPostExecute(result);
+		}
+		
+	}
+	
+	/**
+	 * Helper to calculate value for the BitmapFactory.Options object's inSampleSize
+	 * @param options is the BitmapFactory.Options object
+	 * @param reqWidth is the requested width
+	 * @param reqHeight is the requested height
+	 * @return the inSampleSize value
+	 */
+	private static int calculateInSampleSize(
+            BitmapFactory.Options options, int reqWidth, int reqHeight) {
+		// Raw height and width of image
+		final int height = options.outHeight;
+		final int width = options.outWidth;
+		int inSampleSize = 1;
+		
+		if (reqWidth==0 || reqHeight==0) return inSampleSize; // probably invalid input, so just return 1
+		
+		if (height > reqHeight || width > reqWidth) {
+			if (width > height) {
+				inSampleSize = Math.round((float)height / (float)reqHeight);
+			} else {
+				inSampleSize = Math.round((float)width / (float)reqWidth);
+			}
+		}
+		return inSampleSize;
+	}
+	
+	
+	/** Callback to create the action bar menu items */
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		MenuInflater inflater = getSupportMenuInflater(); // using ActionBarSherlock
@@ -517,76 +598,6 @@ public class UploadMlpActivity extends SherlockActivity {
 			camera.setEnabled(false).setTitle("Snap! No "+getText(R.id.menu_camera));
 		}
 		return true;
-	}
-	
-	
-	@Override
-	public boolean onOptionsItemSelected(MenuItem item) {
-		switch (item.getItemId()) {
-		case R.id.menu_camera:
-			dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
-			return true;
-		case R.id.menu_settings:
-			startActivity(new Intent(this, SettingsActivity.class));
-			return true;
-		case R.id.menu_gallery:
-			Intent intent = new Intent(Intent.ACTION_VIEW,
-					Uri.parse("content://media/internal/images/media"));
-			startActivity(intent);
-			return true;
-		default:
-			return super.onOptionsItemSelected(item);
-		}
-	}
-	
-	
-	@Override
-	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-		switch (requestCode) {
-		case ACTION_TAKE_PHOTO_B: {
-			hasStartedActivityTakePictureIntent = false;
-			if (resultCode == RESULT_OK) {
-				hasCameraOKed = true;
-				handleBigCameraPhoto();
-			}
-			if (resultCode == RESULT_CANCELED) {
-				hasCameraCanceled = true;
-				new File(mCurrentPhotoPath).delete();
-			}
-			break;
-		} // ACTION_TAKE_PHOTO_B
-		} // switch
-	}
-
-	// Some lifecycle callbacks so that the image can survive orientation change
-	@Override
-	protected void onSaveInstanceState(Bundle outState) {
-		outState.putParcelable(BITMAP_STORAGE_KEY, mImageBitmap);
-		outState.putString(CURRENT_PHOTO_PATH_KEY, mCurrentPhotoPath);
-		outState.putString(TIMESTAMP_KEY, timeStamp);
-		outState.putBoolean("hascameracanceled", hasCameraCanceled); //TODO put in R.string
-		outState.putBoolean("hasStartedActivityTakePictureIntent", hasStartedActivityTakePictureIntent);
-		outState.putBoolean("hascameraoked", hasCameraOKed);
-		outState.putString("accesstoken", accessToken);
-		outState.putString("username", userName);
-		outState.putBoolean("hasBeenStartedBySendIntent", hasBeenStartedBySendIntent);
-		super.onSaveInstanceState(outState);
-	}
-
-	@Override
-	protected void onRestoreInstanceState(Bundle savedInstanceState) {
-		super.onRestoreInstanceState(savedInstanceState);
-		mImageBitmap = savedInstanceState.getParcelable(BITMAP_STORAGE_KEY);
-		mImageView.setImageBitmap(mImageBitmap);
-		mCurrentPhotoPath = savedInstanceState.getString(CURRENT_PHOTO_PATH_KEY);
-		timeStamp = savedInstanceState.getString(TIMESTAMP_KEY);
-		hasCameraCanceled = savedInstanceState.getBoolean("hascameracanceled"); //TODO use R.string
-		hasStartedActivityTakePictureIntent = savedInstanceState.getBoolean("hasStartedActivityTakePictureIntent");
-		hasCameraOKed = savedInstanceState.getBoolean("hascameraoked");
-		accessToken = savedInstanceState.getString("accesstoken");
-		userName = savedInstanceState.getString("username");
-		hasBeenStartedBySendIntent = savedInstanceState.getBoolean("hasBeenStartedBySendIntent");
-//		Log.d(LOG_TAG, "** exiting onRestoreInstanceState(), savedInstanceState hasCameraCanceled "+hasCameraCanceled);
 	}
 
 	/**
@@ -609,6 +620,60 @@ public class UploadMlpActivity extends SherlockActivity {
 			packageManager.queryIntentActivities(intent,
 					PackageManager.MATCH_DEFAULT_ONLY);
 		return list.size() > 0;
+	}
+	
+	
+	/**
+	 * Callback when an actionbar menu is selected
+	 */
+	@Override
+	public boolean onOptionsItemSelected(MenuItem item) {
+		switch (item.getItemId()) {
+		case R.id.menu_camera:
+			dispatchTakePictureIntent(ACTION_TAKE_PHOTO_B);
+			return true;
+		case R.id.menu_settings:
+			startActivity(new Intent(this, SettingsActivity.class));
+			return true;
+		case R.id.menu_gallery:
+			// reference -- http://stackoverflow.com/questions/6016000/how-to-open-phones-gallery-through-code
+			Intent intent = new Intent(Intent.ACTION_VIEW, android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+			startActivity(intent);
+			return true;
+		default:
+			return super.onOptionsItemSelected(item);
+		}
+	}
+
+
+	/** Some lifecycle callbacks so that the image can survive orientation change */
+	@Override
+	protected void onSaveInstanceState(Bundle outState) {
+		outState.putParcelable(BITMAP_STORAGE_KEY, mImageBitmap);
+		outState.putString(CURRENT_PHOTO_PATH_KEY, mCurrentPhotoPath);
+		outState.putString(TIMESTAMP_KEY, timeStamp);
+		outState.putBoolean("hascameracanceled", hasCameraCanceled); //TODO put in R.string
+		outState.putBoolean("hasStartedActivityTakePictureIntent", hasStartedActivityTakePictureIntent);
+		outState.putBoolean("hascameraoked", hasCameraOKed);
+		outState.putString("accesstoken", mAccessToken);
+		outState.putString("username", userName);
+		outState.putBoolean("hasBeenStartedBySendIntent", hasBeenStartedBySendIntent);
+		super.onSaveInstanceState(outState);
+	}
+
+	@Override
+	protected void onRestoreInstanceState(Bundle savedInstanceState) {
+		super.onRestoreInstanceState(savedInstanceState);
+		mImageBitmap = savedInstanceState.getParcelable(BITMAP_STORAGE_KEY);
+		mImageView.setImageBitmap(mImageBitmap);
+		mCurrentPhotoPath = savedInstanceState.getString(CURRENT_PHOTO_PATH_KEY);
+		timeStamp = savedInstanceState.getString(TIMESTAMP_KEY);
+		hasCameraCanceled = savedInstanceState.getBoolean("hascameracanceled"); //TODO use R.string
+		hasStartedActivityTakePictureIntent = savedInstanceState.getBoolean("hasStartedActivityTakePictureIntent");
+		hasCameraOKed = savedInstanceState.getBoolean("hascameraoked");
+		mAccessToken = savedInstanceState.getString("accesstoken");
+		userName = savedInstanceState.getString("username");
+		hasBeenStartedBySendIntent = savedInstanceState.getBoolean("hasBeenStartedBySendIntent");
 	}
 
 }
