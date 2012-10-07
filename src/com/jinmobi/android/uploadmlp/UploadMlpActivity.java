@@ -638,6 +638,9 @@ public class UploadMlpActivity extends SherlockActivity {
 		case R.id.menu_gallery:
 			// reference -- http://stackoverflow.com/questions/6016000/how-to-open-phones-gallery-through-code
 			Intent intent = new Intent(Intent.ACTION_VIEW, android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+			// start uploadmlp app's own activity even after back key > to Gallery app > long-press Home > app icon in recent apps
+			intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); // FLAG_ACTIVITY_CLEAR_WHEN_TASK_RESET only clears Gallery activity from task stack
+															//  so won't be in Gallery app next time UploadMLP is launched with app icon
 			startActivity(intent);
 			return true;
 		default:
