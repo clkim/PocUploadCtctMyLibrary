@@ -57,10 +57,10 @@ import com.ctctlabs.ctctwsjavalib.Image;
  */
 public class UploadMlpActivity extends SherlockActivity {
 
-	private static final int ACTION_TAKE_PHOTO_B		= 101;
+	private static final int ACTION_TAKE_PHOTO_B		= 10;
+	private static final int ACTION_PICK_PHOTO_GALLERY	= 20;
 	private static final String BITMAP_STORAGE_KEY		= "viewbitmap";
 	private static final String CURRENT_PHOTO_PATH_KEY	= "currentphotopath";
-	private static final String TIMESTAMP_KEY			= "timestampinfilename";
     private static final String REDIRECT_URI			= "https://uploadctctdomain";
     private static final String AUTHORIZE_PATH			= "https://oauth2.constantcontact.com/oauth2/oauth/siteowner/authorize"; 
     private static final String CLIENT_ID				= "8fc5424e-d919-4739-823f-f78a465b61d1";
@@ -79,7 +79,6 @@ public class UploadMlpActivity extends SherlockActivity {
 	private CTCTConnection			conn;    
     private HashMap<String, Object>	attributes;
     private String					userName;
-	private String					timeStamp;
 	
 	private Boolean hasCameraCanceled					= false;
 	private Boolean hasCameraOKed						= false;
@@ -211,6 +210,7 @@ public class UploadMlpActivity extends SherlockActivity {
 			int column_index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
 			cursor.moveToFirst();
 			String selectedImagePath = cursor.getString(column_index);
+			cursor.close();
 			if (selectedImagePath != null) {
 				return selectedImagePath;
 			}
@@ -299,7 +299,7 @@ public class UploadMlpActivity extends SherlockActivity {
 	 */
 	private File createImageFile() throws IOException {
 		// Create an image file name
-		timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+		String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
 		String imageFileName = JPEG_FILE_PREFIX + timeStamp + "_";
 		File albumF = getAlbumDir();
 		File imageF = File.createTempFile(imageFileName, JPEG_FILE_SUFFIX, albumF);
@@ -349,16 +349,23 @@ public class UploadMlpActivity extends SherlockActivity {
 			
 			if (resultCode == RESULT_OK) {
 				hasCameraOKed = true;				// hasCameraOKed = true
-				
+				// mCurrentPhotoPath was already set before starting Camera app activity, so just handle photo
 				handleCameraPhoto();
 			}
 			if (resultCode == RESULT_CANCELED) {
 				hasCameraCanceled = true;				// hasCameraCanceled = true
-				
+				// mCurrentPhotoPath was already set before starting Camera app activity, so delete that temp file
 				new File(mCurrentPhotoPath).delete();
 			}
 			break;
 		} // ACTION_TAKE_PHOTO_B
+		case ACTION_PICK_PHOTO_GALLERY: {
+			if (resultCode == RESULT_OK){  
+	            Uri selectedImageUri = data.getData();
+	            mCurrentPhotoPath = mParseUriToFilepath(selectedImageUri);
+	            handlePicture();
+	        }
+		} // ACTION_PICK_PHOTO_GALLERY
 		} // switch
 	}
 
@@ -453,6 +460,7 @@ public class UploadMlpActivity extends SherlockActivity {
 			
 			// get the size of the image
 			bmOptions.inJustDecodeBounds = true;
+			bmOptions.inSampleSize = 1; //TODO
 			BitmapFactory.decodeFile(picturePathSdCard, bmOptions);
 			if( bmOptions.outWidth==-1 || bmOptions.outHeight==-1 ) {
 				return null; // there is an error
@@ -460,11 +468,13 @@ public class UploadMlpActivity extends SherlockActivity {
 			
 			// set BitmapFactory.Options object to be used by decodeFile()
 			int scaleFactorUpload = calculateInSampleSize(bmOptions, 200, 150); // these dim seems to create files in MLP mostly 50-70 KB, sometimes 100+ KB
-//			Log.d(LOG_TAG, "** picture outWidth, outHeight: "+bmOptions.outWidth+", "+bmOptions.outHeight);
-//			Log.d(LOG_TAG, "** inSampleSize is "+scaleFactorUpload);
+			scaleFactorUpload = scaleFactorUpload<6 ? 6 : scaleFactorUpload;	// smaller might cause WebServices not to store image
+			Log.d(LOG_TAG, "** picture outWidth, outHeight: "+bmOptions.outWidth+", "+bmOptions.outHeight);
+			Log.d(LOG_TAG, "** inSampleSize is "+scaleFactorUpload);
 			bmOptions.inJustDecodeBounds = false;
 			bmOptions.inSampleSize = scaleFactorUpload;
 			bmOptions.inPurgeable = true;
+//			bmOptions.inInputShareable = true; //TODO
 			
 			// get bitmap from image file
 			File file = new File(picturePathSdCard);
@@ -497,12 +507,8 @@ public class UploadMlpActivity extends SherlockActivity {
 				// retrieve settings values from default SharedPreferences
 				SharedPreferences shPref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
 				String folderId = shPref.getString(getString(R.string.pref_key_folderid), "2"); //default is "2";
-				if (timeStamp==null) {
-					// not set if handling ACTION_SEND intent from Share in Gallery, so createImageFile() was not called
-					timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-				}
 				String fileName = shPref.getString(getString(R.string.pref_key_filename), "_UploadMLP")
-						+ timeStamp +".jpg";
+						+ new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date()) + ".jpg";
 				String description = shPref.getString(getString(R.string.pref_key_filedesc), "UploadMLP picture");
 				
 				// call the java wrapper library methods
@@ -512,8 +518,10 @@ public class UploadMlpActivity extends SherlockActivity {
 				imageUrl = (String)imageModelObj.getAttribute("ImageURL");
 				
 			} catch (SocketException se) {
+				Log.d(LOG_TAG, "SocketException thrown "+se.getMessage());
 				return SocketException.class.getSimpleName();		// could be wifi not available
-			} catch (UnknownHostException uhe) {	
+			} catch (UnknownHostException uhe) {
+				Log.d(LOG_TAG, "UnknownHostException thrown "+uhe.getMessage());
 				return UnknownHostException.class.getSimpleName();	// could be wifi not available
 			} catch (ClientProtocolException e) {
 				e.printStackTrace();
@@ -550,7 +558,7 @@ public class UploadMlpActivity extends SherlockActivity {
 			}
 			else if (result != null) {
 				message = "Uploaded to CTCT MyLibrary Plus";
-//				Log.d(LOG_TAG, "**Image Url is "+result -- picture uploaded);
+				Log.d(LOG_TAG, "**Image Url is "+result);
 			}
 			// Show toast message
 			Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show();
@@ -636,12 +644,17 @@ public class UploadMlpActivity extends SherlockActivity {
 			startActivity(new Intent(this, SettingsActivity.class));
 			return true;
 		case R.id.menu_gallery:
+			// reference -- http://stackoverflow.com/questions/2507898/how-to-pick-an-image-from-gallery-sd-card-for-my-app-in-android
+			Intent gIntent = new Intent(Intent.ACTION_PICK,
+					android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+			startActivityForResult(gIntent, ACTION_PICK_PHOTO_GALLERY);
+			/* view picture images in Gallery app
 			// reference -- http://stackoverflow.com/questions/6016000/how-to-open-phones-gallery-through-code
-			Intent intent = new Intent(Intent.ACTION_VIEW, android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+			Intent gIntent = new Intent(Intent.ACTION_VIEW, android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
 			// start uploadmlp app's own activity even after back key > to Gallery app > long-press Home > app icon in recent apps
-			intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); // FLAG_ACTIVITY_CLEAR_WHEN_TASK_RESET only clears Gallery activity from task stack
-															//  so won't be in Gallery app next time UploadMLP is launched with app icon
-			startActivity(intent);
+			gIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); // FLAG_ACTIVITY_CLEAR_WHEN_TASK_RESET only clears Gallery activity from task stack
+															 //  so won't be in Gallery app next time UploadMLP is launched with app icon
+			startActivity(gIntent);*/
 			return true;
 		default:
 			return super.onOptionsItemSelected(item);
@@ -654,7 +667,6 @@ public class UploadMlpActivity extends SherlockActivity {
 	protected void onSaveInstanceState(Bundle outState) {
 		outState.putParcelable(BITMAP_STORAGE_KEY, mImageBitmap);
 		outState.putString(CURRENT_PHOTO_PATH_KEY, mCurrentPhotoPath);
-		outState.putString(TIMESTAMP_KEY, timeStamp);
 		outState.putBoolean("hascameracanceled", hasCameraCanceled); //TODO put in R.string
 		outState.putBoolean("hasStartedActivityTakePictureIntent", hasStartedActivityTakePictureIntent);
 		outState.putBoolean("hascameraoked", hasCameraOKed);
@@ -670,7 +682,6 @@ public class UploadMlpActivity extends SherlockActivity {
 		mImageBitmap = savedInstanceState.getParcelable(BITMAP_STORAGE_KEY);
 		mImageView.setImageBitmap(mImageBitmap);
 		mCurrentPhotoPath = savedInstanceState.getString(CURRENT_PHOTO_PATH_KEY);
-		timeStamp = savedInstanceState.getString(TIMESTAMP_KEY);
 		hasCameraCanceled = savedInstanceState.getBoolean("hascameracanceled"); //TODO use R.string
 		hasStartedActivityTakePictureIntent = savedInstanceState.getBoolean("hasStartedActivityTakePictureIntent");
 		hasCameraOKed = savedInstanceState.getBoolean("hascameraoked");
