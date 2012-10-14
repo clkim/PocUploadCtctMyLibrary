@@ -46,6 +46,7 @@ import com.actionbarsherlock.view.MenuInflater;
 import com.actionbarsherlock.view.MenuItem;
 import com.ctctlabs.ctctwsjavalib.CTCTConnection;
 import com.ctctlabs.ctctwsjavalib.Image;
+import com.ctctlabs.ctctwsjavalib.MutableModelObject;
 
 /**
  * This is main activity of app.
@@ -270,7 +271,7 @@ public class UploadMlpActivity extends SherlockActivity {
 		case ACTION_TAKE_PHOTO_B:
 			hasCameraOKed = false;					// hasCameraOKed = false
 			hasCameraCanceled = false;					// hasCameraCanceled = false
-			hasBeenStartedBySendIntent = false;						// hasBeenStartedBySendIntent = false
+//			hasBeenStartedBySendIntent = false;						// hasBeenStartedBySendIntent = false
 			File f = null;
 			try {
 				f = createImageFile();
@@ -460,7 +461,7 @@ public class UploadMlpActivity extends SherlockActivity {
 			
 			// get the size of the image
 			bmOptions.inJustDecodeBounds = true;
-			bmOptions.inSampleSize = 1; //TODO
+			bmOptions.inSampleSize = 1;
 			BitmapFactory.decodeFile(picturePathSdCard, bmOptions);
 			if( bmOptions.outWidth==-1 || bmOptions.outHeight==-1 ) {
 				return null; // there is an error
@@ -474,7 +475,7 @@ public class UploadMlpActivity extends SherlockActivity {
 			bmOptions.inJustDecodeBounds = false;
 			bmOptions.inSampleSize = scaleFactorUpload;
 			bmOptions.inPurgeable = true;
-//			bmOptions.inInputShareable = true; //TODO
+			bmOptions.inInputShareable = true;
 			
 			// get bitmap from image file
 			File file = new File(picturePathSdCard);
@@ -514,15 +515,16 @@ public class UploadMlpActivity extends SherlockActivity {
 				// call the java wrapper library methods
 				Image imageModelObj = conn.createImage(attributes, folderId, fileName, data, description);
 				imageModelObj.commit();
+				if (conn.getResponseStatusCode() == HttpStatus.SC_CREATED) {
+					imageUrl = (String)imageModelObj.getAttribute("ImageURL");
+				} else {
+					imageUrl = null;
+				}
 				
-				imageUrl = (String)imageModelObj.getAttribute("ImageURL");
-				
-			} catch (SocketException se) {
-				Log.d(LOG_TAG, "SocketException thrown "+se.getMessage());
-				return SocketException.class.getSimpleName();		// could be wifi not available
-			} catch (UnknownHostException uhe) {
-				Log.d(LOG_TAG, "UnknownHostException thrown "+uhe.getMessage());
-				return UnknownHostException.class.getSimpleName();	// could be wifi not available
+			} catch (SocketException e) {
+				return e.getClass().getSimpleName() + ": " + e.getMessage();	// could be wifi not available
+			} catch (UnknownHostException e) {
+				return e.getClass().getSimpleName() + ": " + e.getMessage();	// could be wifi not available
 			} catch (ClientProtocolException e) {
 				e.printStackTrace();
 				return null;
@@ -543,27 +545,40 @@ public class UploadMlpActivity extends SherlockActivity {
 		protected void onPostExecute(String result) {
 			String message = "";
 			if (result == null) { //TODO try detect other errors: image too large?, not MLP and exceeded 5 images
-//				Log.d(LOG_TAG, "**Error, imageUrl is null -- picture not uploaded");
-				if (conn.getResponseStatusCode() == HttpStatus.SC_BAD_REQUEST) { 
-					message = "Snap! Possible bad folder id setting.";
-				} else if (conn.getResponseStatusCode() == 0) {
-					message = "Snap! Please try again. (Reason unknown)";
+				int connStatusCode = conn.getResponseStatusCode();
+				String connStatusReason = conn.getResponseStatusReason();
+				Log.d(LOG_TAG, "** Error - Picture imageUrl null; connection status "+connStatusCode + " " + connStatusReason);
+				if (connStatusCode == HttpStatus.SC_BAD_REQUEST) { 
+					message = "Snap! Not uploaded (Bad Request; possible bad folder id setting)";
+				} else if (connStatusCode == 0) {
+					message = "Snap! Please try again (Sorry, reason unknown)";
 				} else {
-					message = "Snap! Not uploaded. ("+conn.getResponseStatusReason()+")";
+					message = "Snap! Not uploaded (" + connStatusReason + ")";
 				}
 			}
-			else if ( result.equals(UnknownHostException.class.getSimpleName())
-					  || result.equals(SocketException.class.getSimpleName()) ) {
-				message = "Please check your Internet connection. (" + result + ")";
+			else if ( result.contains(UnknownHostException.class.getSimpleName())
+					  || result.contains(SocketException.class.getSimpleName()) ) {
+				Log.d(LOG_TAG, "** Error - "+result);
+				message = "Please check your Internet connection "
+						+ "(" + result.split(": ")[1] + ")"; // reason is after separator
 			}
 			else if (result != null) {
-				message = "Uploaded to CTCT MyLibrary Plus";
 				Log.d(LOG_TAG, "**Image Url is "+result);
+				message = "Uploaded to CTCT MyLibrary Plus";
 			}
+			
+			
 			// Show toast message
 			Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show();
 			conn = null;
 			super.onPostExecute(result);
+			
+			
+			// Stop activity if started by ACTION_SEND intent called from the Share menu in Gallery app
+			if (hasBeenStartedBySendIntent) {
+				hasBeenStartedBySendIntent = false;					// hasBeenStartedBySendIntent = false
+				finish();
+			}
 		}
 		
 	}

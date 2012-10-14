@@ -66,8 +66,8 @@ public class CTCTConnection extends DefaultHandler {
 
 	private String username;
 	private String accessToken; // for OAuth2.0
-	private int responseStatusCode;
-	private String responseStatusReason;
+	private int responseStatusCode;		 // currently set only in doPostMultipartRequest()
+	private String responseStatusReason; // currently set only in doPostMultipartRequest()
 
 	private DefaultHttpClient httpclient;
 
@@ -188,16 +188,16 @@ public class CTCTConnection extends DefaultHandler {
 		HttpResponse response = httpclient.execute(httppost);
 		
 		if (response != null) {
-			int status = response.getStatusLine().getStatusCode();
+			responseStatusCode = response.getStatusLine().getStatusCode();
+			responseStatusReason = response.getStatusLine().getReasonPhrase();
 			// If receive anything but a 201 status, return a null input stream
-			if (status == HttpStatus.SC_CREATED) {
+			if (responseStatusCode == HttpStatus.SC_CREATED) {
 				return response.getEntity().getContent();
-			} else {
-				responseStatusCode = status;
-				responseStatusReason = response.getStatusLine().getReasonPhrase();
-				return null;
 			}
+			return null;
 		} else {
+			responseStatusCode = 0;			// reset to initial default
+			responseStatusReason = null;	// reset to initial default
 			return null;
 		}
 	}
