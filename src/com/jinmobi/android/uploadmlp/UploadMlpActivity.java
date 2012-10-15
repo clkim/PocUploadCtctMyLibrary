@@ -271,7 +271,6 @@ public class UploadMlpActivity extends SherlockActivity {
 		case ACTION_TAKE_PHOTO_B:
 			hasCameraOKed = false;					// hasCameraOKed = false
 			hasCameraCanceled = false;					// hasCameraCanceled = false
-//			hasBeenStartedBySendIntent = false;						// hasBeenStartedBySendIntent = false
 			File f = null;
 			try {
 				f = createImageFile();
@@ -468,10 +467,9 @@ public class UploadMlpActivity extends SherlockActivity {
 			}
 			
 			// set BitmapFactory.Options object to be used by decodeFile()
-			int scaleFactorUpload = calculateInSampleSize(bmOptions, 200, 150); // these dim seems to create files in MLP mostly 50-70 KB, sometimes 100+ KB
-			scaleFactorUpload = scaleFactorUpload<6 ? 6 : scaleFactorUpload;	// smaller might cause WebServices not to store image
-			Log.d(LOG_TAG, "** picture outWidth, outHeight: "+bmOptions.outWidth+", "+bmOptions.outHeight);
-			Log.d(LOG_TAG, "** inSampleSize is "+scaleFactorUpload);
+			int scaleFactorUpload = calculateInSampleSize(bmOptions, 800, 600);
+//			Log.d(LOG_TAG, "** picture outWidth, outHeight: "+bmOptions.outWidth+", "+bmOptions.outHeight);
+//			Log.d(LOG_TAG, "** inSampleSize is "+scaleFactorUpload);
 			bmOptions.inJustDecodeBounds = false;
 			bmOptions.inSampleSize = scaleFactorUpload;
 			bmOptions.inPurgeable = true;
@@ -487,7 +485,7 @@ public class UploadMlpActivity extends SherlockActivity {
 				ExifInterface exif = new ExifInterface(picturePathSdCard);
 				if (ExifInterface.ORIENTATION_ROTATE_90 == exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0)) {
 					Matrix matrix = new Matrix();
-					matrix.preRotate(90f);
+					matrix.postRotate(90f);
 					bm = Bitmap.createBitmap(bm, 0, 0, bmOptions.outWidth, bmOptions.outHeight, matrix, true);
 				}
 
@@ -547,7 +545,7 @@ public class UploadMlpActivity extends SherlockActivity {
 			if (result == null) { //TODO try detect other errors: image too large?, not MLP and exceeded 5 images
 				int connStatusCode = conn.getResponseStatusCode();
 				String connStatusReason = conn.getResponseStatusReason();
-				Log.d(LOG_TAG, "** Error - Picture imageUrl null; connection status "+connStatusCode + " " + connStatusReason);
+//				Log.d(LOG_TAG, "** Error - Picture imageUrl null; connection status "+connStatusCode + " " + connStatusReason);
 				if (connStatusCode == HttpStatus.SC_BAD_REQUEST) { 
 					message = "Snap! Not uploaded (Bad Request; possible bad folder id setting)";
 				} else if (connStatusCode == 0) {
@@ -558,12 +556,12 @@ public class UploadMlpActivity extends SherlockActivity {
 			}
 			else if ( result.contains(UnknownHostException.class.getSimpleName())
 					  || result.contains(SocketException.class.getSimpleName()) ) {
-				Log.d(LOG_TAG, "** Error - "+result);
+//				Log.d(LOG_TAG, "** Error - "+result);
 				message = "Please check your Internet connection "
-						+ "(" + result.split(": ")[1] + ")"; // reason is after separator
+						+ "(" + result.split(": ")[1] + ")"; // reason is after separator; set in catch clause of doInBackground() above
 			}
 			else if (result != null) {
-				Log.d(LOG_TAG, "**Image Url is "+result);
+//				Log.d(LOG_TAG, "**Image Url is "+result);
 				message = "Uploaded to CTCT MyLibrary Plus";
 			}
 			
